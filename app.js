@@ -123,7 +123,7 @@
       k.yazar = aday.yazar || k.yazar; k.yayinevi = k.yayinevi || aday.yayinevi; k.yil = k.yil || aday.yil; k.isbn = k.isbn || aday.isbn; k.kapak = k.kapak || aday.kapak; k.sayfa = k.sayfa || aday.sayfa; k.bilgi = true;
       break;
     }
-    bulunanGoster();
+    bulunanGoster(); turkceDuzeltPlanla(k);
   }
 
   // ---------- fiyat kuralı ----------
@@ -171,7 +171,7 @@
     if (b) Object.assign(st.bulunan[i], { baslik: b.baslik, yazar: b.yazar, yayinevi: b.yayinevi, yil: b.yil, sayfa: b.sayfa, kapak: b.kapak, bilgi: !!b.baslik });
     st.bulunan[i].bekliyor = false;
     toast(b && b.baslik ? b.baslik + " eklendi" : "Bilgi bulunamadı (" + isbn + "): adını elle yaz ya da kapağı okut");
-    bulunanGoster();
+    bulunanGoster(); if (b && b.baslik) turkceDuzeltPlanla(st.bulunan[i]);
     if (b && b.baslik) { const k = st.bulunan[i]; siraya(() => piyasaFiyat(k)); }
     return true;
   }
@@ -442,7 +442,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
         // veritabanı ve fiyat: sırayla, arka planda (liste hemen görünür, alanlar bulundukça dolar)
         siraya(async () => {
           if (!st.bulunan.includes(kayit)) return;
-          if (isbn) { const b = await isbnBilgi(isbn); if (b && b.baslik) Object.assign(kayit, { baslik: b.baslik, yazar: b.yazar || kayit.yazar, yayinevi: b.yayinevi || kayit.yayinevi, yil: b.yil || kayit.yil, kapak: b.kapak, sayfa: b.sayfa || kayit.sayfa, bilgi: true }); bulunanGoster(); }
+          if (isbn) { const b = await isbnBilgi(isbn); if (b && b.baslik) Object.assign(kayit, { baslik: b.baslik, yazar: b.yazar || kayit.yazar, yayinevi: b.yayinevi || kayit.yayinevi, yil: b.yil || kayit.yil, kapak: b.kapak, sayfa: b.sayfa || kayit.sayfa, bilgi: true }); bulunanGoster(); turkceDuzeltPlanla(kayit); }
           else await zenginlestir(kayit);
           if (kayit.baslik) await piyasaFiyat(kayit);
         });
@@ -652,6 +652,25 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     durum(n + " kitap kaydedildi (Kitaplarım)." + (fiyatsiz ? " " + fiyatsiz + " tanesinin fiyatı yok; Kitaplarım'dan gir, fiyatsız kitap vitrine çıkmaz." : ""));
   });
 
+  // ---------- Türkçe harf düzeltme (veritabanları çoğu zaman ş/ğ/ı/İ'siz verir) ----------
+  const TURKCE = /[çğıöşüÇĞİÖŞÜ]/; const SUPHELI = /[a-zA-Z]{3,}/;
+  const asciiGibi = (t) => !!t && !TURKCE.test(t) && SUPHELI.test(t);
+  const trKuyruk = new Set(); let trZaman = null;
+  function turkceDuzeltPlanla(k) { if (!st.ai.key) return; if (asciiGibi(k.baslik) || asciiGibi(k.yazar) || asciiGibi(k.yayinevi)) { trKuyruk.add(k); clearTimeout(trZaman); trZaman = setTimeout(turkceDuzelt, 1500); } }
+  async function turkceDuzelt() {
+    const paket = [...trKuyruk].slice(0, 25); if (!paket.length) return; paket.forEach((k) => trKuyruk.delete(k));
+    try {
+      const girdi = paket.map((k, i) => ({ i, baslik: k.baslik || "", yazar: k.yazar || "", yayinevi: k.yayinevi || "" }));
+      const r = await gemini([{ text: "Aşağıdaki Türkçe kitap adı / yazar / yayınevi metinlerinde Türkçe harfler (ş ğ ı İ ö ü ç) düşmüş olabilir (örn. 'Icindeki Dagi As' → 'İçindeki Dağı Aş'). Her kaydı doğru Türkçe yazımla geri ver; yabancı adları (Dostoyevski, Richard Gerrig) olduğu gibi bırak; emin olmadığını değiştirme. Aynı 'i' değerleriyle, yalnızca JSON dizi döndür: [{\"i\":0,\"baslik\":\"...\",\"yazar\":\"...\",\"yayinevi\":\"...\"}]\n" + JSON.stringify(girdi) }]);
+      const liste = Array.isArray(r) ? r : (r && Array.isArray(r.kayitlar) ? r.kayitlar : []);
+      let n = 0;
+      for (const x of liste) { const k = paket[+x.i]; if (!k) continue; for (const a of ["baslik", "yazar", "yayinevi"]) { const v = String(x[a] ?? "").trim(); if (v && v !== k[a] && kat(v) === kat(k[a])) { k[a] = v; n++; } } } // yalnızca harf farkı olan değişiklikler kabul edilir (anlam değişmez)
+      if (n) { bulunanGoster(); kitaplarGoster(); kitaplariSakla(); }
+    } catch (e) {}
+    if (trKuyruk.size) trZaman = setTimeout(turkceDuzelt, 4000);
+  }
+  $("trDuzelt") && $("trDuzelt").addEventListener("click", () => { if (!st.ai.key) { $("ozet").textContent = "Düzeltme için Ayarlar'dan Gemini anahtarı gir."; return; } let n = 0; for (const k of st.kitaplar) if (asciiGibi(k.baslik) || asciiGibi(k.yazar) || asciiGibi(k.yayinevi)) { trKuyruk.add(k); n++; } $("ozet").textContent = n ? n + " kayıt düzeltiliyor…" : "Düzeltilecek kayıt yok."; clearTimeout(trZaman); trZaman = setTimeout(turkceDuzelt, 300); });
+
   // ---------- kitaplarım ----------
   function kitaplarGoster() {
     const q = norm($("ara").value); const host = $("liste");
@@ -846,6 +865,11 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     const carpan = {}; for (const d of DURUMLAR) carpan[d] = num($(YA_ID[d]).value) ?? 0;
     const { error } = await sb.from("platform_ayar").update({ komisyon_yuzde: num($("yKom").value) ?? 0, abonelik_aylik: num($("yAbo").value) ?? 0, whatsapp: $("yWa").value.trim() || null, alim_kurali: { kaynak: $("yaKaynak").value, carpan } }).eq("id", 1);
     $("yDurum").textContent = error ? OPB.hataMetni(error) : "Kaydedildi."; if (!error) yonetimYukle();
+  });
+  $("davet").addEventListener("click", async () => {
+    const url = new URL("kitapci.html", location.href).href; const metin = "Kitaplarını OkurPazarı'nda sat: telefonla rafı tara, 10 dakikada yükle, sipariş telefonuna düşsün. Ücretsiz: " + url;
+    try { if (navigator.share) { await navigator.share({ title: "OkurPazarı — kitapçılar için", text: metin, url }); return; } } catch (e) { return; }
+    try { await navigator.clipboard.writeText(metin); $("davetDurum").textContent = "Davet metni kopyalandı; WhatsApp'a yapıştır."; } catch (e) { $("davetDurum").textContent = url; }
   });
   OPB.platformAyar && OPB.platformAyar().then((a) => { if (a) { $("pKom").textContent = "%" + (a.komisyon_yuzde ?? 0); $("pAbo").textContent = tl(num(a.abonelik_aylik) || 0); } });
   oturumBaslat();

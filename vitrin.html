@@ -60,6 +60,7 @@
     <form class="ara" id="araForm"><input id="q" placeholder="Kitap, yazar ya da ISBN ara" autocomplete="off"><button type="submit">Ara</button></form>
     <a class="ustbtn" href="sat.html">Kitaplarını sat</a>
     <a class="ustbtn" href="index.html">Kitapçı girişi</a>
+    <button class="ustbtn" id="hesapAc" type="button">Giriş</button>
     <button class="ustbtn sepet" id="sepetAc" type="button">🛒 Sepet <span id="sepetSay">0</span></button>
   </div>
 </header>
@@ -98,8 +99,31 @@
   </div>
 </div>
 
+<div class="sepetPanel" id="hesapPanel" hidden>
+  <div class="sepetKutu">
+    <div style="display:flex;justify-content:space-between;align-items:center"><h2>Hesabım</h2><button class="btn" id="hesapKapat" type="button">Kapat</button></div>
+    <div id="hesapGirisAlan">
+      <p class="not">Üyelik şart değil; sipariş geçmişini görmek ve adresini tekrar yazmamak için hesap açabilirsin. E-posta onayı yok.</p>
+      <div class="fields">
+        <label class="field">E-posta<input id="mEposta" type="email" autocomplete="email"></label>
+        <label class="field">Şifre (en az 6)<input id="mSifre" type="password" autocomplete="current-password"></label>
+        <label class="field">Ad Soyad (kayıt için)<input id="mAd" autocomplete="name"></label>
+        <label class="field">Telefon (kayıt için)<input id="mTel" inputmode="tel" autocomplete="tel"></label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="mGiris" type="button">Giriş yap</button><button class="btn" id="mKayit" type="button">Kayıt ol</button></div>
+      <p class="hata" id="mHata"></p>
+    </div>
+    <div id="hesapIcAlan" hidden>
+      <p class="not" id="mBilgi"></p>
+      <button class="btn" id="mCikis" type="button">Çıkış yap</button>
+      <div class="grup">Siparişlerim</div>
+      <div id="siparislerim"></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="bulut.js?v=1"></script>
-<script src="vitrin.js?v=1"></script>
+<script src="vitrin.js?v=2"></script>
 </body>
 </html>

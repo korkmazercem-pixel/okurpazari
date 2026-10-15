@@ -102,8 +102,45 @@
     } else $("oHata").textContent = sonuclar.map((s) => (s.dukkan || "") + ": " + s.hata).join(" · ");
   });
 
+  // ---------- müşteri hesabı (isteğe bağlı) ----------
+  const SD = { yeni: "Alındı, kitapçı onayı bekleniyor", onaylandi: "Onaylandı, hazırlanıyor", kargoda: "Kargoda", teslim: "Teslim edildi", iptal: "İptal edildi" };
+  st.uye = null;
+  async function hesapGoster() {
+    const girisli = !!st.uye; $("hesapGirisAlan").hidden = girisli; $("hesapIcAlan").hidden = !girisli; $("hesapAc").textContent = girisli ? (st.musteri.ad || "Hesabım") : "Giriş";
+    if (!girisli) return;
+    $("mBilgi").textContent = (st.musteri.ad ? st.musteri.ad + " · " : "") + (st.uye.email || "");
+    const { data, error } = await sb.from("siparisler").select("*").eq("musteri", st.uye.id).order("olusturma", { ascending: false }).limit(50);
+    const l = data || [];
+    $("siparislerim").innerHTML = error ? '<p class="hata">' + esc(hataMetni(error)) + "</p>" : l.length ? l.map((s) => `<div class="satir" style="grid-template-columns:1fr auto"><div><b>${esc(SD[s.durum] || s.durum)}</b><div class="not">${esc(new Date(s.olusturma).toLocaleString("tr-TR"))} · no ${esc(String(s.id).slice(0, 8).toUpperCase())}</div><div class="not">${(s.kalemler || []).map((k) => esc(k.adet) + " × " + esc(k.baslik)).join(", ")}</div></div><div class="fiyat">${tl(s.toplam)}</div></div>`).join("") : '<p class="not">Henüz sipariş yok.</p>';
+  }
+  async function profilCek() {
+    if (!sb || !st.uye) return;
+    const { data } = await sb.from("profiller").select("ad, telefon, adres").eq("id", st.uye.id).maybeSingle();
+    if (data) { st.musteri = { ad: data.ad || st.musteri.ad || "", telefon: data.telefon || st.musteri.telefon || "", adres: data.adres || st.musteri.adres || "" }; LS.set("op_musteri", st.musteri); }
+  }
+  async function oturumBaslat() {
+    if (!sb) return;
+    const s = await window.OP.oturum(); st.uye = s ? s.user : null; if (st.uye) await profilCek(); hesapGoster();
+    sb.auth.onAuthStateChange(async (olay, oturum) => { const y = oturum ? oturum.user : null; if ((y && y.id) !== (st.uye && st.uye.id)) { st.uye = y; if (y) await profilCek(); hesapGoster(); } });
+  }
+  $("hesapAc").addEventListener("click", () => { hesapGoster(); $("hesapPanel").hidden = false; });
+  $("hesapKapat").addEventListener("click", () => { $("hesapPanel").hidden = true; });
+  $("hesapPanel").addEventListener("click", (e) => { if (e.target === $("hesapPanel")) $("hesapPanel").hidden = true; });
+  $("mGiris").addEventListener("click", async () => { $("mHata").textContent = ""; const { error } = await sb.auth.signInWithPassword({ email: $("mEposta").value.trim(), password: $("mSifre").value }); if (error) $("mHata").textContent = hataMetni(error); });
+  $("mKayit").addEventListener("click", async () => {
+    $("mHata").textContent = ""; const email = $("mEposta").value.trim(), sifre = $("mSifre").value, ad = $("mAd").value.trim(), tel = $("mTel").value.trim();
+    if (!email || sifre.length < 6) { $("mHata").textContent = "E-posta ve en az 6 haneli şifre gir."; return; }
+    const { data, error } = await sb.auth.signUp({ email, password: sifre, options: { data: { rol: "musteri", ad, telefon: tel } } });
+    if (error) { $("mHata").textContent = hataMetni(error); return; }
+    st.musteri = { ad, telefon: tel, adres: st.musteri.adres || "" }; LS.set("op_musteri", st.musteri);
+    if (!data.session) $("mHata").textContent = "Hesap açıldı; giriş yapılamadıysa e-posta onayı gerekiyor olabilir.";
+  });
+  $("mCikis").addEventListener("click", async () => { await sb.auth.signOut(); st.uye = null; hesapGoster(); });
+  // sipariş sonrası adresi profile yaz (üyeyse)
+  $("siparisVer").addEventListener("click", async () => { if (st.uye && sb) { try { await sb.from("profiller").update({ ad: $("oAd").value.trim() || null, telefon: $("oTel").value.trim() || null, adres: $("oAdres").value.trim() || null }).eq("id", st.uye.id); } catch (e) {} } });
+
   // başlangıç
-  sepetKaydet();
+  sepetKaydet(); oturumBaslat();
   const u = new URLSearchParams(location.search); if (u.get("q")) { st.q = u.get("q"); $("q").value = st.q; }
   ara(true);
 })();

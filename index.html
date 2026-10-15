@@ -103,6 +103,7 @@
     <div class="row" style="justify-content:space-between"><h2>Kitaplarım</h2><span class="muted hint" id="ozet"></span></div>
     <div class="row">
       <label class="field grow">Ara<input id="ara" placeholder="kitap, yazar, ISBN"></label>
+      <button class="btn" id="trDuzelt" type="button" title="Veritabanından Türkçe harfsiz gelen adları düzeltir">Türkçe harfleri düzelt</button>
       <button class="btn" id="disaAktar" type="button">Dışa aktar</button>
     </div>
     <textarea id="aktarim" hidden readonly></textarea>
@@ -225,7 +226,8 @@
     </div>
     <div class="band">
       <h3>Platform</h3>
-      <dl class="kv"><dt>Satış komisyonu</dt><dd id="pKom">%0</dd><dt>Aylık abonelik</dt><dd id="pAbo">0 ₺</dd><dt>Vitrin</dt><dd><a href="vitrin.html" id="vitrinLink">vitrin.html</a></dd><dt>Sürüm</dt><dd>0.3 — bulut hesabı, vitrin, sipariş</dd></dl>
+      <dl class="kv"><dt>Satış komisyonu</dt><dd id="pKom">%0</dd><dt>Aylık abonelik</dt><dd id="pAbo">0 ₺</dd><dt>Vitrin</dt><dd><a href="vitrin.html" id="vitrinLink">vitrin.html</a></dd><dt>Sürüm</dt><dd>0.4 — bulut, vitrin, sipariş, müşteri hesabı</dd></dl>
+      <div class="row"><button class="btn primary" id="davet" type="button">📨 Kitapçı davet et</button><a class="btn" href="kitapci.html" target="_blank" rel="noopener">Davet sayfasını gör</a><span class="status" id="davetDurum"></span></div>
     </div>
   </section>
 </main>
@@ -233,6 +235,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="bulut.js?v=1"></script>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
