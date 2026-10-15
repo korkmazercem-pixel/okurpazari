@@ -115,11 +115,27 @@
     const h = location.href.replace(/^https?:\/\//, "");
     return ' <a class="btn" href="intent://' + esc(h) + '#Intent;scheme=https;package=com.android.chrome;end">Chrome ile aç</a>';
   }
-  function kameraHata(e) {
+  async function izinDurumu() {
+    try { if (navigator.permissions && navigator.permissions.query) return (await navigator.permissions.query({ name: "camera" })).state; } catch (e) {}
+    return "";
+  }
+  function adresKopyala() {
+    const a = location.origin + location.pathname;
+    const ok = () => durum("Adres kopyalandı. Tarayıcı uygulamasını aç, adres çubuğuna yapıştır.");
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(a).then(ok, () => window.prompt("Adresi kopyala:", a));
+    else window.prompt("Adresi kopyala:", a);
+  }
+  async function kameraHata(e) {
     const ad = (e && e.name) || "", msj = (e && e.message) || "", tb = tarayici();
     let m;
     if (/NotAllowed|PermissionDenied|Security/i.test(ad)) {
-      m = "Kamera izni verilmedi (" + tb + "). İzin penceresi çıktıysa <b>İzin ver</b>'e bas. Çıkmadıysa: adres çubuğundaki <b>kilit</b> simgesi → İzinler → Kamera → İzin ver.";
+      const iz = await izinDurumu();
+      if (iz === "prompt") {
+        m = "Bu pencere kamera izni soramıyor (" + tb + ", uygulama içi pencere gibi görünüyor). Siteyi telefonun <b>Tarayıcı</b> uygulamasında aç: <b>Adresi kopyala</b> → Tarayıcı'yı aç → adres çubuğuna yapıştır → Kamerayı aç → İzin ver.";
+      } else {
+        m = "Kamera izni verilmedi (" + tb + (iz ? ", durum: " + iz : "") + "). İzin penceresi çıktıysa <b>İzin ver</b>'e bas. Çıkmadıysa: adres çubuğundaki <b>kilit</b> simgesi → İzinler → Kamera → İzin ver; ya da telefon Ayarlar → Uygulamalar → Tarayıcı → İzinler → Kamera.";
+      }
+      m += ' <button class="btn" type="button" id="adresKopyala">Adresi kopyala</button>';
     } else if (/NotFound|DevicesNotFound/i.test(ad)) {
       m = "Telefonda kamera bulunamadı ya da tarayıcının kamera izni telefon ayarlarında kapalı (Ayarlar → Uygulamalar → " + tb + " → İzinler → Kamera).";
     } else if (/NotReadable|TrackStart|Abort/i.test(ad)) {
@@ -129,8 +145,9 @@
     } else {
       m = "Kamera açılamadı (" + tb + ", " + (ad || "hata") + (msj ? ": " + esc(msj) : "") + ").";
     }
-    m += " Olmazsa <b>Chrome</b> ile aç; ya da <b>🖼 Fotoğraftan oku</b> ile telefonun kamerasından fotoğraf çek, barkodlar fotoğraftan okunur." + chromeLink();
+    m += " Hemen denemek için <b>🖼 Fotoğraftan oku</b>: telefonun kamerası açılır, barkodu çek, fotoğraftan okunur." + chromeLink();
     $("durum").innerHTML = m; $("durum").classList.add("err");
+    const k = $("adresKopyala"); if (k) k.addEventListener("click", adresKopyala);
   }
   async function kameraAc() {
     if (!window.isSecureContext) { kameraHata({ name: "TypeError" }); return; }
