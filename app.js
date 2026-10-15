@@ -271,7 +271,7 @@
   async function dongu() {
     const my = ++st.loopId; const v = $("video");
     while (st.loopId === my && st.stream) {
-      if (v.readyState >= 2 && !st.okuyor) {
+      if (v.readyState >= 2) {
         try { const codes = await st.detector.detect(v); for (const c of codes) await isbnGeldi(c.rawValue, "barkod"); } catch (e) {}
       }
       await new Promise((r) => setTimeout(r, 220));
@@ -329,6 +329,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
           }
           let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {}
           son = { code: "http_" + r.status, message: m };
+          if (r.status === 400 && /thinking/i.test(m) && body.generationConfig && body.generationConfig.thinkingConfig) { delete body.generationConfig.thinkingConfig; st.dusunmeYok = true; deneme--; continue; } // bu model düşünme ayarını kabul etmiyor: ayarsız tekrar
           kota = r.status === 429 && !/limit: 0|grounding|google_search/i.test(m);
           if (kota && deneme === 0) { kalici = false; await new Promise((res) => setTimeout(res, 2500)); continue; }
           break;
@@ -347,7 +348,8 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     throw son || { code: "model_yok", message: "Çalışan model bulunamadı" };
   }
   async function gemini(parts) {
-    const text = await geminiIstek({ contents: [{ parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json" } });
+    const gc = { temperature: 0.1, responseMimeType: "application/json" }; if (!st.dusunmeYok) gc.thinkingConfig = { thinkingBudget: 0 }; // düşünme adımı kapalı: okuma belirgin hızlanır
+    const text = await geminiIstek({ contents: [{ parts }], generationConfig: gc });
     const m = text.match(/[\[{][\s\S]*[\]}]/);
     return JSON.parse(m ? m[0] : text);
   }
@@ -380,7 +382,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     return st.bulunan.some(esit) || st.kitaplar.some((k) => k.satis !== "satildi" && esit(k));
   }
   async function gorselOku(blob, sessiz) {
-    st.okuyor = true;
+    st.okuyor = (st.okuyor || 0) + 1;
     try {
       if (!sessiz) durum("Görüntü okunuyor…"); toast("Okunuyor…");
       const b64 = await blobB64(blob);
@@ -405,7 +407,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
       }
       bulunanGoster(); if (n) { flash(); bip(); }
       st.otoSayac = (st.otoSayac || 0) + n;
-      if (sessiz) toast(n ? n + " kitap eklendi (toplam " + st.otoSayac + "); kaydırmaya devam" : "Hepsi zaten listede; kaydırmaya devam");
+      if (sessiz) toast((n ? "+" + n + " kitap · " : "Bu karedekiler zaten listede · ") + (typeof sayacMetni === "function" ? sayacMetni() : st.otoSayac + " kitap"));
       else { durum(n + " kitap okundu" + (ayni ? ", " + ayni + " tanesi zaten listedeydi" : "") + ". Kontrol et, fiyatı denetle, kaydet."); toast(n + " kitap eklendi"); }
       return n;
     } catch (e) {
@@ -416,7 +418,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
       else durum("Okuma başarısız: " + (e.message || k || "bağlantı"), true);
       toast(sessiz ? "Okunamadı; birkaç saniye sonra yine denenecek" : "Okunamadı; tekrar dene");
       return -1;
-    } finally { st.okuyor = false; }
+    } finally { st.okuyor = Math.max(0, (st.okuyor || 1) - 1); }
   }
   $("kapakOku").addEventListener("click", async () => { if (!st.stream) return; const c = kareAl(); flash(); await gorselOku(await kanvasBlob(c)); });
 
@@ -438,17 +440,39 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   async function surekliDongu() {
     const my = ++oto.dongu; const v = $("video");
     while (oto.acik && oto.dongu === my && st.stream) {
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 120));
       if (v.readyState < 2 || document.hidden) continue;
       let g; try { g = ornekAl(); } catch (e) { continue; }
       const hareket = fark(g, oto.sonOrnek); oto.sonOrnek = g;
-      oto.sabit = hareket < 6 ? oto.sabit + 1 : 0;
-      if (st.okuyor) continue;
+      oto.sabit = hareket < 8 ? oto.sabit + 1 : 0;
       const yeni = fark(g, oto.sonGonder), gecen = Date.now() - oto.sonZaman;
-      if (oto.sabit >= 3 && yeni > 12 && gecen > 3500) {
+      // çekim okumayı beklemez: telefon ~¼ sn sabitlenip yeni bir raf parçası görünce kare sıraya alınır, sen ilerlersin
+      if (oto.sabit >= 2 && yeni > 10 && gecen > 1000 && kareKuyruk.length < 40) {
         oto.sonGonder = g; oto.sonZaman = Date.now();
-        try { const n = await gorselOku(await kanvasBlob(kareAl(1280)), true); if (n < 0) oto.sonZaman = Date.now() + 2500; } catch (e) {}
-      } else if (oto.sabit === 3 && yeni <= 12) toast("Bu kısım okundu; rafta ilerle");
+        kareSirayaAl();
+      } else if (oto.sabit === 2 && yeni <= 10) toast("Bu kısım alındı; rafta ilerle · " + sayacMetni());
+    }
+  }
+  // ---- kare kuyruğu: çekilen kareler arka planda ikişer ikişer okunur; kamera kapansa da sürer ----
+  const kareKuyruk = []; let kareIsleyen = 0; const ESZAMANLI = 2;
+  const sayacMetni = () => { const b = kareKuyruk.length + kareIsleyen; return (b ? "sırada " + b + " kare · " : "") + (st.otoSayac || 0) + " kitap"; };
+  function klik() {
+    try { const ac = bip.ac || (bip.ac = new (window.AudioContext || window.webkitAudioContext)()); const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 520; g.gain.value = 0.05; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.04); } catch (e) {}
+  }
+  function kareSirayaAl() {
+    let c; try { c = kareAl(1280); } catch (e) { return; }
+    flash(); klik();
+    kanvasBlob(c).then((b) => { kareKuyruk.push(b); toast("Kare alındı · " + sayacMetni()); kareIsle(); });
+  }
+  function kareIsle() {
+    while (kareIsleyen < ESZAMANLI && kareKuyruk.length) {
+      const b = kareKuyruk.shift(); kareIsleyen++;
+      gorselOku(b, true).catch(() => -1).then((n) => {
+        kareIsleyen--;
+        if (n < 0) { b.deneme = (b.deneme || 0) + 1; if (b.deneme <= 3) { kareKuyruk.unshift(b); setTimeout(kareIsle, 3000); return; } } // geçici hata: kareyi atma, 3 sn sonra yeniden dene (en çok 3 kez)
+        if (!kareKuyruk.length && !kareIsleyen) { toast("Hepsi okundu · " + (st.otoSayac || 0) + " kitap"); if (!st.stream) durum("Arka plandaki kareler okundu: " + (st.otoSayac || 0) + " kitap. Kontrol et, kaydet."); }
+        else kareIsle();
+      });
     }
   }
   $("surekli").addEventListener("click", () => { if (!st.stream) return; if (!st.ai.key) { durum("Sürekli okuma için Ayarlar'dan Gemini anahtarı gir.", true); return; } surekliAyarla(!oto.acik); });
