@@ -95,11 +95,61 @@
   }
 
   // ---------- kamera ----------
+  function tarayici() {
+    const u = navigator.userAgent || "";
+    if (/HuaweiBrowser|HONORBrowser/i.test(u)) return "Huawei Tarayıcı";
+    if (/SamsungBrowser/i.test(u)) return "Samsung Internet";
+    if (/MiuiBrowser|XiaoMi/i.test(u)) return "Mi Tarayıcı";
+    if (/OPR\/|Opera/i.test(u)) return "Opera";
+    if (/EdgA|Edg\//i.test(u)) return "Edge";
+    if (/Firefox|FxiOS/i.test(u)) return "Firefox";
+    if (/; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\//i.test(u)) return "uygulama içi tarayıcı";
+    if (/CriOS/i.test(u)) return "Chrome (iPhone)";
+    if (/Chrome\//i.test(u)) return "Chrome";
+    if (/Safari\//i.test(u)) return "Safari";
+    return "bilinmeyen tarayıcı";
+  }
+  const ANDROID = /Android/i.test(navigator.userAgent || "");
+  function chromeLink() {
+    if (!ANDROID) return "";
+    const h = location.href.replace(/^https?:\/\//, "");
+    return ' <a class="btn" href="intent://' + esc(h) + '#Intent;scheme=https;package=com.android.chrome;end">Chrome ile aç</a>';
+  }
+  function kameraHata(e) {
+    const ad = (e && e.name) || "", msj = (e && e.message) || "", tb = tarayici();
+    let m;
+    if (/NotAllowed|PermissionDenied|Security/i.test(ad)) {
+      m = "Kamera izni verilmedi (" + tb + "). İzin penceresi çıktıysa <b>İzin ver</b>'e bas. Çıkmadıysa: adres çubuğundaki <b>kilit</b> simgesi → İzinler → Kamera → İzin ver.";
+    } else if (/NotFound|DevicesNotFound/i.test(ad)) {
+      m = "Telefonda kamera bulunamadı ya da tarayıcının kamera izni telefon ayarlarında kapalı (Ayarlar → Uygulamalar → " + tb + " → İzinler → Kamera).";
+    } else if (/NotReadable|TrackStart|Abort/i.test(ad)) {
+      m = "Kamerayı başka bir uygulama kullanıyor. Kamera/WhatsApp gibi açık uygulamaları kapatıp tekrar dene.";
+    } else if (/TypeError/i.test(ad) || !window.isSecureContext) {
+      m = "Bu sayfa güvenli (https) açılmamış; kamera çalışmaz. Adresin https:// ile başladığından emin ol.";
+    } else {
+      m = "Kamera açılamadı (" + tb + ", " + (ad || "hata") + (msj ? ": " + esc(msj) : "") + ").";
+    }
+    m += " Olmazsa <b>Chrome</b> ile aç; ya da <b>🖼 Fotoğraftan oku</b> ile telefonun kamerasından fotoğraf çek, barkodlar fotoğraftan okunur." + chromeLink();
+    $("durum").innerHTML = m; $("durum").classList.add("err");
+  }
   async function kameraAc() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { durum("Bu tarayıcı kamerayı desteklemiyor. Chrome ya da Safari ile aç.", true); return; }
-    try {
-      st.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
-    } catch (e) { durum("Kamera açılamadı: izin verilmedi ya da başka uygulama kullanıyor. Adres çubuğundaki kilit simgesinden kameraya izin ver.", true); return; }
+    if (!window.isSecureContext) { kameraHata({ name: "TypeError" }); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $("durum").innerHTML = "Bu tarayıcı (" + tarayici() + ") canlı kamerayı desteklemiyor. Sayfayı <b>Chrome</b> ile aç ya da <b>🖼 Fotoğraftan oku</b> ile fotoğraf çek." + chromeLink();
+      $("durum").classList.add("err"); return;
+    }
+    durum("Kamera izni isteniyor… çıkan pencerede İzin ver'e bas.");
+    const denemeler = [
+      { audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
+      { audio: false, video: { facingMode: "environment" } },
+      { audio: false, video: true },
+    ];
+    let hata = null; st.stream = null;
+    for (const c of denemeler) {
+      try { st.stream = await navigator.mediaDevices.getUserMedia(c); hata = null; break; }
+      catch (e) { hata = e; if (/NotAllowed|PermissionDenied|Security/i.test((e && e.name) || "")) break; }
+    }
+    if (!st.stream) { kameraHata(hata); return; }
     const v = $("video"); v.srcObject = st.stream; st.track = st.stream.getVideoTracks()[0];
     try { await v.play(); } catch (e) {}
     $("cam").hidden = false; $("camKontrol").hidden = false; $("basla").hidden = true;
@@ -199,17 +249,29 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   // fotoğraftan: barkod + (anahtar varsa) görsel okuma
   $("dosya").addEventListener("change", async (e) => {
     const files = [...e.target.files]; e.target.value = "";
+    if (!files.length) return;
+    durum("Fotoğraf okunuyor…");
     for (const f of files.slice(0, 10)) {
       let bulundu = false;
       try {
-        const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
-        const c = document.createElement("canvas"); const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-        c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s); c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+        let bmp;
+        try { bmp = await createImageBitmap(f, { imageOrientation: "from-image" }); }
+        catch (err) { const img = new Image(); img.src = URL.createObjectURL(f); await img.decode(); bmp = img; URL.revokeObjectURL(img.src); }
+        const w = bmp.width || bmp.naturalWidth, h = bmp.height || bmp.naturalHeight;
+        const c = document.createElement("canvas"); const s = Math.min(1, 1600 / Math.max(w, h));
+        c.width = Math.round(w * s); c.height = Math.round(h * s); c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
         if ("BarcodeDetector" in window) { try { const d = new BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a"] }); for (const r of await d.detect(c)) { st.sonGorme.delete(isbnDuzelt(r.rawValue)); if (await isbnGeldi(r.rawValue, "barkod")) bulundu = true; } } catch (err) {} }
-        if (!bulundu && window.ZXing) { try { const rd = new ZXing.BrowserMultiFormatReader(); const img = new Image(); img.src = c.toDataURL("image/jpeg", 0.9); await img.decode(); const r = await rd.decodeFromImageElement(img); if (r) { st.sonGorme.delete(isbnDuzelt(r.getText())); bulundu = await isbnGeldi(r.getText(), "barkod"); } } catch (err) {} }
+        if (!bulundu && window.ZXing) {
+          try {
+            const hints = new Map(); hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.UPC_A]); hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+            const rd = new ZXing.BrowserMultiFormatReader(hints); const img = new Image(); img.src = c.toDataURL("image/jpeg", 0.9); await img.decode();
+            const r = await rd.decodeFromImageElement(img); if (r) { st.sonGorme.delete(isbnDuzelt(r.getText())); bulundu = await isbnGeldi(r.getText(), "barkod"); }
+          } catch (err) {}
+        }
         if (st.ai.key) await gorselOku(await kanvasBlob(c));
-        else if (!bulundu) durum("Fotoğrafta barkod bulunamadı. Kapak/sırt okuma için Ayarlar'dan anahtar gir.", true);
-      } catch (err) { durum("Fotoğraf okunamadı.", true); }
+        else if (!bulundu) durum("Fotoğrafta barkod bulunamadı; barkodu yakından, düz ve net çek. Kapak/sırt okuma için Ayarlar'dan anahtar gir.", true);
+        else durum("Fotoğraftan okundu.");
+      } catch (err) { durum("Fotoğraf okunamadı (" + ((err && err.name) || "hata") + ").", true); }
     }
   });
 
