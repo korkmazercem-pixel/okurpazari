@@ -81,11 +81,49 @@
     if (!b || !b.baslik) { try { b = (await openLibrary(isbn)) || b; } catch (e) {} }
     return b;
   }
-  function yeniKayit(b, kaynak, guven) {
+  function yeniKayit(b, kaynak, guven, bilgi) {
     return { id: uid(), baslik: b.baslik || "", yazar: b.yazar || "", yayinevi: b.yayinevi || "", baski: b.baski ?? "", yil: b.yil ?? "", isbn: b.isbn || "", sayfa: b.sayfa || "", kapak: b.kapak || "",
-      kaynak, guven: guven ?? 1, bilgi: !!b.baslik, durum: "İyi", fiyat: "", adet: 1 };
+      kaynak, guven: guven ?? 1, bilgi: bilgi == null ? !!b.baslik : !!bilgi, durum: "İyi", fiyat: "", adet: 1 };
   }
   function listedeVar(isbn) { return isbn && (st.bulunan.some((k) => k.isbn === isbn) || st.kitaplar.some((k) => k.isbn === isbn && k.satis !== "satildi")); }
+  // BÜYÜK HARF okumalarını normal yazıma çevir (sırtlar çoğu zaman büyük harf): "İKİ KİŞİLİK ALAN" → "İki Kişilik Alan"
+  const KUCUK = new Set(["ve", "ile", "da", "de", "ya", "veya", "bir", "için", "mi", "mı", "mu", "mü", "of", "the", "and"]);
+  function yaziDuzelt(s) {
+    s = String(s ?? "").trim(); if (!s) return s;
+    const harf = s.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü]/g, ""); if (harf.length < 3) return s;
+    const buyuk = harf.replace(/[^A-ZÇĞİÖŞÜ]/g, "").length; if (buyuk / harf.length < 0.8) return s; // zaten karışık yazım
+    const turkce = /[ÇĞİÖŞÜçğıöşü]/.test(s); // Türkçe harf yoksa büyük I yabancı addır: RICHARD → Richard, KIZ → Kiz (nadir, elle düzeltilir)
+    return s.split(/\s+/).map((w, i) => {
+      const k = w.replace(/İ/g, "i").replace(/I/g, turkce ? "ı" : "i").toLocaleLowerCase("tr-TR");
+      if (i > 0 && KUCUK.has(k)) return k;
+      if (/^\d+\.?$/.test(k)) return k;
+      const ilk = k[0] === "i" ? "İ" : k[0].toLocaleUpperCase("tr-TR");
+      return ilk + k.slice(1);
+    }).join(" ");
+  }
+
+  // ---------- sıralı arka plan işleri (veritabanı + fiyat): aynı anda 12 istek atınca Google sınır koyuyor ----------
+  let kuyruk = Promise.resolve();
+  const siraya = (fn) => (kuyruk = kuyruk.then(fn, fn).then(() => new Promise((r) => setTimeout(r, 350))));
+  function benzerlik(a, b) {
+    const ta = new Set(kat(a).split(" ").filter((t) => t.length > 1)), tb = new Set(kat(b).split(" ").filter((t) => t.length > 1));
+    if (!ta.size || !tb.size) return 0; let o = 0; for (const t of ta) if (tb.has(t)) o++; return o / (ta.size + tb.size - o);
+  }
+  // sırt/kapaktan okunan kitabı ad+yazarla veritabanında bul; bulursa yayınevi/yıl/ISBN/kapak doldur
+  async function zenginlestir(k) {
+    if (!k.baslik || k.bilgi) return;
+    const sorgular = ['intitle:"' + k.baslik + '"' + (k.yazar ? ' inauthor:"' + k.yazar + '"' : ""), k.baslik + (k.yazar ? " " + k.yazar : "")];
+    const soyad = kat(k.yazar).split(" ").pop() || "";
+    for (const q of sorgular) {
+      let l = []; try { l = await googleBooks(q); } catch (e) { continue; }
+      const aday = l.find((b) => { const s = benzerlik(b.baslik, k.baslik); const ok = s >= 0.6 || kat(b.baslik).startsWith(kat(k.baslik)) || kat(k.baslik).startsWith(kat(b.baslik)); return ok && (!soyad || !b.yazar || kat(b.yazar).includes(soyad)); });
+      if (!aday) continue;
+      if (aday.isbn && listedeVar(aday.isbn) && !k.isbn) { k.tekrar = true; }
+      k.baslik = aday.baslik || k.baslik; k.yazar = aday.yazar || k.yazar; k.yayinevi = k.yayinevi || aday.yayinevi; k.yil = k.yil || aday.yil; k.isbn = k.isbn || aday.isbn; k.kapak = k.kapak || aday.kapak; k.sayfa = k.sayfa || aday.sayfa; k.bilgi = true;
+      break;
+    }
+    bulunanGoster();
+  }
 
   // ---------- fiyat kuralı ----------
   const yuvarla = (p, y) => { y = Math.max(1, num(y) || 1); return Math.max(y, Math.round(p / y) * y); };
@@ -133,7 +171,7 @@
     st.bulunan[i].bekliyor = false;
     toast(b && b.baslik ? b.baslik + " eklendi" : "Bilgi bulunamadı (" + isbn + "): adını elle yaz ya da kapağı okut");
     bulunanGoster();
-    if (b && b.baslik) piyasaFiyat(st.bulunan[i]);
+    if (b && b.baslik) { const k = st.bulunan[i]; siraya(() => piyasaFiyat(k)); }
     return true;
   }
 
@@ -264,7 +302,7 @@
   // ---------- kapak / sırt okuma (Gemini) ----------
   const PROMPT_FOTO = `Bu fotoğrafta kitap(lar) var: raf sırtları, kapaklar veya arka kapak barkodları olabilir. Görünen HER kitap için bir nesne üret, hiçbirini atlama.
 Alanlar: "baslik", "yazar", "yayinevi", "baski" (kaçıncı baskı, sayı; görünmüyorsa null), "yil" (sayı; görünmüyorsa null), "isbn" (barkodun yanında yazan 13 ya da 10 haneli numara, boşluksuz; görünmüyorsa null), "kaynak" ("kapak", "sirt" veya "barkod"), "guven" (0-1).
-Kurallar: Okuyamadığın alanı null bırak, asla uydurma. Kare kenarında yarım kalmış ya da adı güvenle okunamayan kitabı tamamen atla (bir sonraki karede tam görünecek). Sırtlarda yazar genelde üstte/altta küçük yazar, en altta yayınevi logosu olur. Türkçe karakterleri koru. Kitap olmayan nesneleri atla.
+Kurallar: Okuyamadığın alanı null bırak, asla uydurma. Kare kenarında yarım kalmış ya da adı güvenle okunamayan kitabı tamamen atla (bir sonraki karede tam görünecek). Sırtlarda yazar genelde üstte/altta küçük yazar, en altta yayınevi logosu olur. Türkçe karakterleri koru. Sırtta BÜYÜK HARF yazsa bile ad ve yazarı normal yazımla ver ("İki Kişilik Alan", "Antonino Ferro"). Yayınevini logodan/kısaltmadan tanıyorsan tam adını yaz (YKY → Yapı Kredi Yayınları). Kitap olmayan nesneleri atla.
 Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","baski":null,"yil":null,"isbn":null,"kaynak":"sirt","guven":0.9}]`;
   // Model sırası: seçili model çalışmazsa (hesaba kapalı / kaldırılmış) sıradaki denenir ve kalıcı seçilir.
   const MODELLER = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"];
@@ -279,16 +317,25 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
       let kalici = true; // yalnızca "model kapalı" hatalarından sonra bulunan model kalıcı seçilir; yoğunluk geçicidir
       for (const model of sira) {
         const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key);
-        let r;
-        try { r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
-        catch (e) { son = { code: "baglanti", message: "İnternet bağlantısı yok ya da kesildi" }; kalici = false; continue; }
-        if (r.ok) {
-          if (kalici && model !== st.ai.model) { st.ai.model = model; LS.set("op_ai", st.ai); const s = $("aiModel"); if (s) s.value = model; }
-          const j = await r.json();
-          return (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+        let kota = false;
+        for (let deneme = 0; deneme < 2; deneme++) { // 429 (dakikalık sınır): aynı modeli 2,5 sn sonra bir kez daha dene; model değiştirmek sınırı daha çok zorlar
+          let r;
+          try { r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+          catch (e) { son = { code: "baglanti", message: "İnternet bağlantısı yok ya da kesildi" }; kalici = false; break; }
+          if (r.ok) {
+            if (kalici && model !== st.ai.model) { st.ai.model = model; LS.set("op_ai", st.ai); const s = $("aiModel"); if (s) s.value = model; }
+            const j = await r.json();
+            return (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+          }
+          let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {}
+          son = { code: "http_" + r.status, message: m };
+          kota = r.status === 429 && !/limit: 0|grounding|google_search/i.test(m);
+          if (kota && deneme === 0) { kalici = false; await new Promise((res) => setTimeout(res, 2500)); continue; }
+          break;
         }
-        let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {}
-        son = { code: "http_" + r.status, message: m };
+        if (son && son.code === "baglanti") continue;
+        if (aramaKapali(son)) throw son; // arama kotası/paketi: model değiştirmek işe yaramaz
+        if (kota) { son.message = "Dakikalık istek sınırı doldu; birkaç saniye sonra tekrar dene."; throw son; }
         if (modelHatasi(son)) continue;
         if (geciciHata(son)) { kalici = false; continue; }
         throw son;
@@ -310,7 +357,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     const m = text.match(/\[[\s\S]*\]/);
     try { return JSON.parse(m ? m[0] : text); } catch (e) { return []; }
   }
-  const aramaKapali = (e) => /google_search|grounding|search tool|billing|free tier|not enabled|not supported/i.test((e && e.message) || "");
+  const aramaKapali = (e) => /google_search|grounding|search tool|billing|free tier|not enabled|not supported|limit: 0/i.test((e && e.message) || "");
   // aynı kitap (ad+yazar) zaten listede mi? — sürekli okumada üst üste binen kareler için
   // karşılaştırma için Türkçe harf farklarını eşitle (İ/I/ı → i, ş → s …): okuma hataları ve ASCII veritabanı adları için
   const kat = (s) => norm(String(s ?? "").replace(/İ/g, "i").replace(/I/g, "ı")).replace(/[ıi]/g, "i").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ö/g, "o").replace(/ç/g, "c");
@@ -346,11 +393,15 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
         const isbn = isbnDuzelt(k.isbn || "");
         if (isbn && listedeVar(isbn)) { ayni++; continue; }
         if (!isbn && benzerVar(k.baslik || "", k.yazar || "")) { ayni++; continue; }
-        const kayit = yeniKayit({ baslik: k.baslik || "", yazar: k.yazar || "", yayinevi: k.yayinevi || "", baski: k.baski ?? "", yil: k.yil ?? "", isbn }, k.kaynak || "kapak", num(k.guven) ?? 0.6);
-        if (isbn) { const b = await isbnBilgi(isbn); if (b && b.baslik) Object.assign(kayit, { baslik: b.baslik, yazar: b.yazar || kayit.yazar, yayinevi: b.yayinevi || kayit.yayinevi, yil: b.yil || kayit.yil, kapak: b.kapak, bilgi: true }); }
-        else if (kayit.baslik && !kayit.kapak) { try { const l = await googleBooks("intitle:" + kayit.baslik + (kayit.yazar ? " inauthor:" + kayit.yazar : "")); if (l.length && norm(l[0].baslik).startsWith(norm(kayit.baslik).slice(0, 12))) { kayit.kapak = l[0].kapak; if (!kayit.isbn) kayit.isbn = l[0].isbn; if (!kayit.yayinevi) kayit.yayinevi = l[0].yayinevi; } } catch (e) {} }
+        const kayit = yeniKayit({ baslik: yaziDuzelt(k.baslik || ""), yazar: yaziDuzelt(k.yazar || ""), yayinevi: yaziDuzelt(k.yayinevi || ""), baski: k.baski ?? "", yil: k.yil ?? "", isbn }, k.kaynak || "kapak", num(k.guven) ?? 0.6, false);
         st.bulunan.unshift(kayit); n++;
-        if (kayit.baslik) piyasaFiyat(kayit);
+        // veritabanı ve fiyat: sırayla, arka planda (liste hemen görünür, alanlar bulundukça dolar)
+        siraya(async () => {
+          if (!st.bulunan.includes(kayit)) return;
+          if (isbn) { const b = await isbnBilgi(isbn); if (b && b.baslik) Object.assign(kayit, { baslik: b.baslik, yazar: b.yazar || kayit.yazar, yayinevi: b.yayinevi || kayit.yayinevi, yil: b.yil || kayit.yil, kapak: b.kapak, sayfa: b.sayfa || kayit.sayfa, bilgi: true }); bulunanGoster(); }
+          else await zenginlestir(kayit);
+          if (kayit.baslik) await piyasaFiyat(kayit);
+        });
       }
       bulunanGoster(); if (n) { flash(); bip(); }
       st.otoSayac = (st.otoSayac || 0) + n;
@@ -456,7 +507,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
         <div class="book">
           ${k.kapak ? `<img src="${esc(k.kapak)}" alt="">` : `<div style="width:56px;height:80px;border-radius:4px;background:var(--surface)"></div>`}
           <div style="min-width:0"><div class="title">${esc(k.baslik || (k.bekliyor ? "Aranıyor…" : "Adı okunamadı"))}</div><div class="meta">${esc(k.yazar || "")}${k.yayinevi ? " · " + esc(k.yayinevi) : ""}${k.yil ? " · " + esc(k.yil) : ""}${k.isbn ? " · ISBN " + esc(k.isbn) : ""}</div>
-          <div class="row" style="margin-top:4px"><span class="chip">${esc(k.kaynak)}</span><span class="chip ${g}">${k.bekliyor ? "bilgi aranıyor" : k.bilgi ? "veritabanından" : "okuma %" + Math.round((k.guven || 0) * 100)}</span></div></div>
+          <div class="row" style="margin-top:4px"><span class="chip">${esc(k.kaynak)}</span><span class="chip ${g}">${k.bekliyor ? "bilgi aranıyor" : k.bilgi ? "veritabanından" : "okuma %" + Math.round((k.guven || 0) * 100)}</span>${k.tekrar ? '<span class="chip warn">zaten listede olabilir</span>' : ""}</div></div>
           <button class="btn danger" type="button" data-sil="${i}">Çıkar</button>
         </div>
         <div class="fields">
