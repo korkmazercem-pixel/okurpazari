@@ -20,7 +20,7 @@
   const st = {
     stream: null, track: null, torch: false, detector: null, zx: null, loopId: 0, okuyor: false,
     sonGorme: new Map(), bulunan: [], kitaplar: LS.get("op_kitaplar", []), dukkan: LS.get("op_dukkan", {}),
-    ai: Object.assign({ key: "", model: "gemini-3.8-flash" }, LS.get("op_ai", {})),
+    ai: Object.assign({ key: "", model: "gemini-3.5-flash-lite" }, LS.get("op_ai", {})),
     fiyat: null, // yardımcılar tanımlanınca yüklenir
     sonToplu: null, kunyeHedef: null,
   };
@@ -119,7 +119,8 @@
       const aday = l.find((b) => { const s = benzerlik(b.baslik, k.baslik); const ok = s >= 0.6 || kat(b.baslik).startsWith(kat(k.baslik)) || kat(k.baslik).startsWith(kat(b.baslik)); return ok && (!soyad || !b.yazar || kat(b.yazar).includes(soyad)); });
       if (!aday) continue;
       if (aday.isbn && listedeVar(aday.isbn) && !k.isbn) { k.tekrar = true; }
-      k.baslik = aday.baslik || k.baslik; k.yazar = aday.yazar || k.yazar; k.yayinevi = k.yayinevi || aday.yayinevi; k.yil = k.yil || aday.yil; k.isbn = k.isbn || aday.isbn; k.kapak = k.kapak || aday.kapak; k.sayfa = k.sayfa || aday.sayfa; k.bilgi = true;
+      if (aday.baslik) k.baslik = (k.baslik.includes(":") || !aday.baslik.includes(":")) ? aday.baslik : aday.baslik.split(":")[0].trim(); // alt başlığı sırttaki ada ekleme
+      k.yazar = aday.yazar || k.yazar; k.yayinevi = k.yayinevi || aday.yayinevi; k.yil = k.yil || aday.yil; k.isbn = k.isbn || aday.isbn; k.kapak = k.kapak || aday.kapak; k.sayfa = k.sayfa || aday.sayfa; k.bilgi = true;
       break;
     }
     bulunanGoster();
@@ -304,21 +305,28 @@
 Alanlar: "baslik", "yazar", "yayinevi", "baski" (kaçıncı baskı, sayı; görünmüyorsa null), "yil" (sayı; görünmüyorsa null), "isbn" (barkodun yanında yazan 13 ya da 10 haneli numara, boşluksuz; görünmüyorsa null), "kaynak" ("kapak", "sirt" veya "barkod"), "guven" (0-1).
 Kurallar: Okuyamadığın alanı null bırak, asla uydurma. Kare kenarında yarım kalmış ya da adı güvenle okunamayan kitabı tamamen atla (bir sonraki karede tam görünecek). Sırtlarda yazar genelde üstte/altta küçük yazar, en altta yayınevi logosu olur. Türkçe karakterleri koru. Sırtta BÜYÜK HARF yazsa bile ad ve yazarı normal yazımla ver ("İki Kişilik Alan", "Antonino Ferro"). Yayınevini logodan/kısaltmadan tanıyorsan tam adını yaz (YKY → Yapı Kredi Yayınları). Kitap olmayan nesneleri atla.
 Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","baski":null,"yil":null,"isbn":null,"kaynak":"sirt","guven":0.9}]`;
-  // Model sırası: seçili model çalışmazsa (hesaba kapalı / kaldırılmış) sıradaki denenir ve kalıcı seçilir.
-  const MODELLER = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"];
+  // Model sırası: seçili model çalışmazsa (hesaba kapalı / kaldırılmış / günlük hakkı bitmiş) sıradaki denenir.
+  // Bedava pakette günlük haklar çok farklı: Flash-Lite ~500/gün, 3.8 Flash ~20/gün → varsayılan Flash-Lite.
+  const MODELLER = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"];
   const modelHatasi = (e) => (e.code === "http_404" || e.code === "http_400" || e.code === "http_403") && /no longer available|not found|not supported|does not exist|deprecated|is not available/i.test(e.message || "") && !/grounding|google_search|search/i.test(e.message || "");
   const geciciHata = (e) => e.code === "http_503" || e.code === "http_429" || /high demand|overloaded|try again later|resource.?exhausted|unavailable/i.test(e.message || "");
+  const gunlukKota = (m) => /per day|daily|PerDay|RPD|requests per day/i.test(m || "");
+  const bugun = () => new Date().toISOString().slice(0, 10);
+  st.biten = LS.get("op_biten", {}); // model → günlük hakkının bittiği gün
+  const modelBitti = (m) => st.biten[m] === bugun();
   async function geminiIstek(body) {
     const key = (st.ai.key || "").trim();
     if (!key) throw { code: "anahtar_yok" };
-    const sira = [st.ai.model, ...MODELLER].filter((m, i, a) => m && a.indexOf(m) === i);
+    const sira = [st.ai.model, ...MODELLER].filter((m, i, a) => m && a.indexOf(m) === i && !modelBitti(m));
+    if (!sira.length) throw { code: "gunluk_bitti", message: "Bugünlük ücretsiz okuma hakkı tüm modellerde bitti; yarın sürer ya da AI Studio'da faturalandırma aç." };
     let son = null;
     for (let tur = 0; tur < 2; tur++) {
-      let kalici = true; // yalnızca "model kapalı" hatalarından sonra bulunan model kalıcı seçilir; yoğunluk geçicidir
+      let kalici = true; // yalnızca "model kapalı" hatalarından sonra bulunan model kalıcı seçilir; yoğunluk/kota geçicidir
       for (const model of sira) {
+        if (modelBitti(model)) continue;
         const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key);
         let kota = false;
-        for (let deneme = 0; deneme < 2; deneme++) { // 429 (dakikalık sınır): aynı modeli 2,5 sn sonra bir kez daha dene; model değiştirmek sınırı daha çok zorlar
+        for (let deneme = 0; deneme < 2; deneme++) { // 429 dakikalık sınır: aynı modeli 2,5 sn sonra bir kez daha dene
           let r;
           try { r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
           catch (e) { son = { code: "baglanti", message: "İnternet bağlantısı yok ya da kesildi" }; kalici = false; break; }
@@ -330,21 +338,25 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
           let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {}
           son = { code: "http_" + r.status, message: m };
           if (r.status === 400 && /thinking/i.test(m) && body.generationConfig && body.generationConfig.thinkingConfig) { delete body.generationConfig.thinkingConfig; st.dusunmeYok = true; deneme--; continue; } // bu model düşünme ayarını kabul etmiyor: ayarsız tekrar
-          kota = r.status === 429 && !/limit: 0|grounding|google_search/i.test(m);
+          if (r.status === 429 && !aramaKapali(son) && gunlukKota(m)) { st.biten[model] = bugun(); LS.set("op_biten", st.biten); kota = false; break; } // günlük hak bitti: bu model bugün atlanır, sıradakine geç
+          kota = r.status === 429 && !aramaKapali(son);
           if (kota && deneme === 0) { kalici = false; await new Promise((res) => setTimeout(res, 2500)); continue; }
           break;
         }
         if (son && son.code === "baglanti") continue;
         if (aramaKapali(son)) throw son; // arama kotası/paketi: model değiştirmek işe yaramaz
-        if (kota) { son.message = "Dakikalık istek sınırı doldu; birkaç saniye sonra tekrar dene."; throw son; }
+        if (son.code === "http_429" && modelBitti(model)) { kalici = false; continue; }
+        if (kota) { son.message = "Dakikalık istek sınırı doldu; birkaç saniye bekleniyor."; son.dakikalik = true; throw son; }
         if (modelHatasi(son)) continue;
         if (geciciHata(son)) { kalici = false; continue; }
         throw son;
       }
       if (!son || !(geciciHata(son) || son.code === "baglanti")) break;
+      if (sira.every(modelBitti)) break;
       await new Promise((res) => setTimeout(res, 2000)); // yoğunluk: 2 sn sonra bir tur daha
     }
-    if (son && geciciHata(son)) son.message = "Google'ın modeli şu an yoğun; birkaç saniye sonra tekrar bas.";
+    if (son && son.code === "http_429" && sira.every(modelBitti)) { son.code = "gunluk_bitti"; son.message = "Bugünlük ücretsiz okuma hakkı bitti; yarın sürer ya da AI Studio'da faturalandırma aç."; }
+    else if (son && geciciHata(son)) son.message = "Google'ın modeli şu an yoğun; birkaç saniye sonra tekrar denenecek.";
     throw son || { code: "model_yok", message: "Çalışan model bulunamadı" };
   }
   async function gemini(parts) {
@@ -369,12 +381,17 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     const y = kat(yazar).split(" ").pop() || "";
     const tok = (s) => new Set(kat(s).split(" ").filter((t) => t.length > 2));
     const tb = tok(baslik), bn = sonSayi(b);
+    const anaAd = (t) => t.split(":")[0].trim(); // alt başlığı at: "bir fiil yaratmak: ..." → "bir fiil yaratmak"
+    const b0 = anaAd(b);
     const esit = (k) => {
       const kb = kat(k.baslik); if (!kb) return false;
       if (kb === b) return true;
       const kn = sonSayi(kb); if (bn && kn && bn !== kn) return false; // "İnce Memed 1" ≠ "İnce Memed 2"
+      const kb0 = anaAd(kb);
+      if (kb0 === b0 && b0.length >= 6) return true; // aynı ad = aynı kitap (yazar farklı okunmuş olsa da)
       const yazarUyar = !y || !k.yazar || kat(k.yazar).includes(y);
-      if ((kb.startsWith(b) || b.startsWith(kb)) && Math.min(kb.length, b.length) >= 8) return yazarUyar;
+      if ((kb0.startsWith(b0) || b0.startsWith(kb0)) && Math.min(kb0.length, b0.length) >= 10) return true;
+      if ((kb0.startsWith(b0) || b0.startsWith(kb0)) && Math.min(kb0.length, b0.length) >= 6) return yazarUyar;
       const kt = tok(k.baslik); let ortak = 0; for (const t of tb) if (kt.has(t)) ortak++;
       const j = ortak / (tb.size + kt.size - ortak || 1);
       return j >= 0.7 && yazarUyar;
@@ -384,9 +401,11 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   async function gorselOku(blob, sessiz) {
     st.okuyor = (st.okuyor || 0) + 1;
     try {
+      const bloblar = Array.isArray(blob) ? blob : [blob];
       if (!sessiz) durum("Görüntü okunuyor…"); toast("Okunuyor…");
-      const b64 = await blobB64(blob);
-      let liste = await gemini([{ text: PROMPT_FOTO }, { inline_data: { mime_type: "image/jpeg", data: b64 } }]);
+      const parts = [{ text: (bloblar.length > 1 ? "Aşağıdaki " + bloblar.length + " fotoğraf aynı rafın ardışık, kısmen üst üste binen parçaları. Aynı kitap birden fazla fotoğrafta görünebilir: her kitabı YALNIZCA BİR KEZ listele. " : "") + PROMPT_FOTO }];
+      for (const b of bloblar) parts.push({ inline_data: { mime_type: "image/jpeg", data: await blobB64(b) } });
+      let liste = await gemini(parts);
       if (!Array.isArray(liste)) liste = liste && Array.isArray(liste.kitaplar) ? liste.kitaplar : [];
       liste = liste.filter((k) => k && (k.baslik || k.isbn));
       if (!liste.length) { if (!sessiz) durum("Bu karede kitap okunamadı. Daha yakından ve düz tut.", true); toast(sessiz ? "Bu karede kitap yok; kaydırmaya devam" : "Kitap bulunamadı"); return 0; }
@@ -417,6 +436,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
       else if (k === "http_400" || k === "http_403") durum("Anahtar geçersiz ya da yetkisiz: " + (e.message || ""), true);
       else durum("Okuma başarısız: " + (e.message || k || "bağlantı"), true);
       toast(sessiz ? "Okunamadı; birkaç saniye sonra yine denenecek" : "Okunamadı; tekrar dene");
+      gorselOku.sonHata = e;
       return -1;
     } finally { st.okuyor = Math.max(0, (st.okuyor || 1) - 1); }
   }
@@ -447,15 +467,17 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
       oto.sabit = hareket < 8 ? oto.sabit + 1 : 0;
       const yeni = fark(g, oto.sonGonder), gecen = Date.now() - oto.sonZaman;
       // çekim okumayı beklemez: telefon ~¼ sn sabitlenip yeni bir raf parçası görünce kare sıraya alınır, sen ilerlersin
-      if (oto.sabit >= 2 && yeni > 10 && gecen > 1000 && kareKuyruk.length < 40) {
+      const yavas = hareket < 18 && gecen > 1800; // hiç durmadan ama yavaş kaydırıyorsa da kare al
+      if ((oto.sabit >= 2 || yavas) && yeni > 8 && gecen > 900 && kareKuyruk.length < 120) {
         oto.sonGonder = g; oto.sonZaman = Date.now();
         kareSirayaAl();
-      } else if (oto.sabit === 2 && yeni <= 10) toast("Bu kısım alındı; rafta ilerle · " + sayacMetni());
+      } else if (oto.sabit === 2 && yeni <= 8) toast("Bu kısım alındı; rafta ilerle · " + sayacMetni());
     }
   }
-  // ---- kare kuyruğu: çekilen kareler arka planda ikişer ikişer okunur; kamera kapansa da sürer ----
-  const kareKuyruk = []; let kareIsleyen = 0; const ESZAMANLI = 2;
-  const sayacMetni = () => { const b = kareKuyruk.length + kareIsleyen; return (b ? "sırada " + b + " kare · " : "") + (st.otoSayac || 0) + " kitap"; };
+  // ---- kare kuyruğu: çekilen kareler arka planda SIRAYLA, 3'erli paketler hâlinde okunur; sınıra takılırsa bekler, kare asla atılmaz ----
+  const kareKuyruk = []; let kareIsleyen = 0, kareZaman = 0, kareAralik = 2500, kareDusen = 0;
+  const PAKET = 3; // bir istekte en çok 3 kare: ücretsiz paketin günlük istek hakkını 3 kat verimli kullanır
+  const sayacMetni = () => { const b = kareKuyruk.length + kareIsleyen; const sn = b ? Math.ceil(b / PAKET) * Math.max(4, kareAralik / 1000) : 0; return (b ? "sırada " + b + " kare (~" + (sn < 60 ? sn + " sn" : Math.ceil(sn / 60) + " dk") + ") · " : "") + (st.otoSayac || 0) + " kitap"; };
   function klik() {
     try { const ac = bip.ac || (bip.ac = new (window.AudioContext || window.webkitAudioContext)()); const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 520; g.gain.value = 0.05; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.04); } catch (e) {}
   }
@@ -464,16 +486,29 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     flash(); klik();
     kanvasBlob(c).then((b) => { kareKuyruk.push(b); toast("Kare alındı · " + sayacMetni()); kareIsle(); });
   }
+  let kareZamanlayici = null;
   function kareIsle() {
-    while (kareIsleyen < ESZAMANLI && kareKuyruk.length) {
-      const b = kareKuyruk.shift(); kareIsleyen++;
-      gorselOku(b, true).catch(() => -1).then((n) => {
-        kareIsleyen--;
-        if (n < 0) { b.deneme = (b.deneme || 0) + 1; if (b.deneme <= 3) { kareKuyruk.unshift(b); setTimeout(kareIsle, 3000); return; } } // geçici hata: kareyi atma, 3 sn sonra yeniden dene (en çok 3 kez)
-        if (!kareKuyruk.length && !kareIsleyen) { toast("Hepsi okundu · " + (st.otoSayac || 0) + " kitap"); if (!st.stream) durum("Arka plandaki kareler okundu: " + (st.otoSayac || 0) + " kitap. Kontrol et, kaydet."); }
-        else kareIsle();
-      });
-    }
+    if (kareIsleyen || !kareKuyruk.length) return;
+    const bekle = kareZaman + kareAralik - Date.now();
+    if (bekle > 0) { clearTimeout(kareZamanlayici); kareZamanlayici = setTimeout(kareIsle, bekle); return; }
+    const paket = kareKuyruk.splice(0, PAKET); kareIsleyen = paket.length; kareZaman = Date.now();
+    gorselOku(paket, true).catch(() => -1).then((n) => {
+      kareIsleyen = 0;
+      if (n < 0) {
+        const e = gorselOku.sonHata || {}; const kalici = e.code === "anahtar_yok" || e.code === "gunluk_bitti" || /^http_4(00|03)$/.test(e.code || "");
+        paket.forEach((b) => { b.deneme = (b.deneme || 0) + 1; });
+        if (kalici && e.code !== "gunluk_bitti") { if (paket[0].deneme >= 2) { kareDusen += paket.length; durum(kareDusen + " kare okunamadı: " + (e.message || e.code), true); } else kareKuyruk.unshift(...paket); }
+        else kareKuyruk.unshift(...paket); // sınır / yoğunluk / bağlantı / günlük hak: bekle, atma
+        if (e.code === "gunluk_bitti") { toast("Bugünlük okuma hakkı bitti; " + kareKuyruk.length + " kare bekliyor"); surekliAyarla(false); return; }
+        kareAralik = Math.min(15000, Math.round(kareAralik * 1.6)); // sınıra takıldı: tempoyu düşür
+        toast("Sınır/yoğunluk: " + Math.round(kareAralik / 1000) + " sn bekleniyor · " + sayacMetni());
+        clearTimeout(kareZamanlayici); kareZamanlayici = setTimeout(kareIsle, e.dakikalik ? 20000 : 5000);
+        return;
+      }
+      kareAralik = Math.max(2500, Math.round(kareAralik * 0.85)); // sorunsuz: tempoyu yavaşça yükselt
+      if (!kareKuyruk.length) { toast("Hepsi okundu · " + (st.otoSayac || 0) + " kitap"); if (!st.stream) durum("Arka plandaki kareler okundu: " + (st.otoSayac || 0) + " kitap. Kontrol et, kaydet."); }
+      else kareIsle();
+    });
   }
   $("surekli").addEventListener("click", () => { if (!st.stream) return; if (!st.ai.key) { durum("Sürekli okuma için Ayarlar'dan Gemini anahtarı gir.", true); return; } surekliAyarla(!oto.acik); });
 
@@ -656,12 +691,13 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   $("dAd").value = st.dukkan.ad || ""; $("dSehir").value = st.dukkan.sehir || ""; $("dTel").value = st.dukkan.telefon || "";
   $("dKaydet").addEventListener("click", () => { st.dukkan = { ad: $("dAd").value.trim(), sehir: $("dSehir").value.trim(), telefon: $("dTel").value.trim() }; LS.set("op_dukkan", st.dukkan); $("dDurum").textContent = "Kaydedildi."; $("kimlik").textContent = (st.dukkan.ad || "kitapçı") + " · raf tarama"; });
   if (st.dukkan.ad) $("kimlik").textContent = st.dukkan.ad + " · raf tarama";
-  $("aiKey").value = st.ai.key || ""; $("aiModel").value = MODELLER.includes(st.ai.model) ? st.ai.model : "gemini-3.8-flash";
+  if (!st.ai.secildi && st.ai.model !== "gemini-3.5-flash-lite") { st.ai.model = "gemini-3.5-flash-lite"; LS.set("op_ai", st.ai); } // kullanıcı seçmediyse günlük hakkı bol model
+  $("aiKey").value = st.ai.key || ""; $("aiModel").value = MODELLER.includes(st.ai.model) ? st.ai.model : "gemini-3.5-flash-lite";
   const aiHint = () => { $("aiHint").textContent = st.ai.key ? "Anahtar kayıtlı: Kapak/sırt oku ve fotoğraftan okuma açık." : "Anahtar girilmemiş. Barkod okuma anahtarsız çalışır; kapak ve sırt okuma için bir Gemini API anahtarı gerekir."; };
   aiHint();
-  $("aiKaydet").addEventListener("click", () => { st.ai = { key: $("aiKey").value.trim(), model: $("aiModel").value }; st.aramaKapali = false; LS.set("op_ai", st.ai); $("aiDurum").textContent = "Kaydedildi."; aiHint(); });
+  $("aiKaydet").addEventListener("click", () => { st.ai = { key: $("aiKey").value.trim(), model: $("aiModel").value, secildi: true }; st.aramaKapali = false; LS.set("op_ai", st.ai); $("aiDurum").textContent = "Kaydedildi."; aiHint(); });
   $("aiTest").addEventListener("click", async () => {
-    st.ai = { key: $("aiKey").value.trim(), model: $("aiModel").value }; LS.set("op_ai", st.ai); aiHint();
+    st.ai = { key: $("aiKey").value.trim(), model: $("aiModel").value, secildi: true }; LS.set("op_ai", st.ai); aiHint();
     $("aiDurum").textContent = "Deneniyor…";
     let okuma;
     try { const r = await gemini([{ text: 'Yalnızca şu JSON\'u döndür: {"ok":true}' }]); okuma = r && r.ok ? "Okuma çalışıyor (" + st.ai.model + ")." : "Cevap geldi ama beklenmedik."; }
