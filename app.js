@@ -585,11 +585,11 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     const host = $("bulunan"); $("bulunanBand").hidden = !st.bulunan.length; $("bulunanSay").textContent = st.bulunan.length;
     host.innerHTML = st.bulunan.map((k, i) => {
       const g = k.bekliyor ? "warn" : k.bilgi || k.guven >= 0.75 ? "ok" : "warn";
-      return `<div class="card" data-i="${i}">
+      return `<div class="card k-${esc(k.kaynak || "")}" data-i="${i}">
         <div class="book">
           ${k.kapak ? `<img src="${esc(k.kapak)}" alt="">` : `<div style="width:56px;height:80px;border-radius:4px;background:var(--surface)"></div>`}
           <div style="min-width:0"><div class="title">${esc(k.baslik || (k.bekliyor ? "Aranıyor…" : "Adı okunamadı"))}</div><div class="meta">${esc(k.yazar || "")}${k.yayinevi ? " · " + esc(k.yayinevi) : ""}${k.yil ? " · " + esc(k.yil) : ""}${k.isbn ? " · ISBN " + esc(k.isbn) : ""}</div>
-          <div class="row" style="margin-top:4px"><span class="chip">${esc(k.kaynak)}</span><span class="chip ${g}">${k.bekliyor ? "bilgi aranıyor" : k.bilgi ? "veritabanından" : "okuma %" + Math.round((k.guven || 0) * 100)}</span>${k.tekrar ? '<span class="chip warn">zaten listede olabilir</span>' : ""}${k.farkliBaski ? '<span class="chip">farklı baskı</span>' : ""}${(num(k.adet) || 1) > 1 ? '<span class="chip ok">' + esc(k.adet) + ' adet</span>' : ""}</div></div>
+          <div class="row" style="margin-top:4px"><span class="chip ${esc(k.kaynak)}">${esc(k.kaynak)}</span><span class="chip ${g}">${k.bekliyor ? "bilgi aranıyor" : k.bilgi ? "veritabanından" : "okuma %" + Math.round((k.guven || 0) * 100)}</span>${k.tekrar ? '<span class="chip warn">zaten listede olabilir</span>' : ""}${k.farkliBaski ? '<span class="chip">farklı baskı</span>' : ""}${(num(k.adet) || 1) > 1 ? '<span class="chip ok">' + esc(k.adet) + ' adet</span>' : ""}</div></div>
           <button class="btn danger" type="button" data-sil="${i}">Çıkar</button>
         </div>
         <div class="fields">
@@ -659,7 +659,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     $("ozet").textContent = satista.length ? satista.length + " kayıt · raf değeri " + tl(satista.reduce((a, k) => a + (num(k.fiyat) || 0) * (num(k.adet) || 1), 0)) : "";
     const l = st.kitaplar.filter((k) => !q || norm(k.baslik + " " + k.yazar + " " + k.isbn).includes(q));
     if (!l.length) { host.innerHTML = `<div class="empty">${st.kitaplar.length ? "Aramana uyan kayıt yok." : "Henüz kitap yok. Tara sekmesinden rafını okut."}</div>`; return; }
-    host.innerHTML = l.map((k) => `<div class="card" data-id="${esc(k.id)}">
+    host.innerHTML = l.map((k) => `<div class="card k-${esc(k.kaynak || "")}" data-id="${esc(k.id)}">
       <div class="book">${k.kapak ? `<img src="${esc(k.kapak)}" alt="">` : `<div style="width:56px;height:80px;border-radius:4px;background:var(--surface)"></div>`}
         <div style="min-width:0"><div class="title">${esc(k.baslik)}</div><div class="meta">${esc(k.yazar || "")}${k.yayinevi ? " · " + esc(k.yayinevi) : ""}${k.baski ? " · " + esc(k.baski) + ". baskı" : ""}${k.isbn ? " · " + esc(k.isbn) : ""}</div>
           <div class="row" style="margin-top:4px">${k.satis === "satildi" ? '<span class="chip warn">satıldı</span>' : (num(k.fiyat) == null ? '<span class="chip bad">fiyat yok</span>' : '<span class="chip ok">satışta</span>')}<span class="chip">${esc(k.durum)}</span></div></div>
