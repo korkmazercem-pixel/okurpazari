@@ -10,7 +10,7 @@
 <style>
   :root { --bg:#FBFAF6; --fg:#1E2622; --muted:#5E6A64; --line:#DAD9D1; --surface:#F1F0EA; --card:#fff; --accent:#0F6E63; --accent-ink:#fff; --accent-soft:#DCEFEB; --price:#9A5E0C; --ok:#1F7A3A; --warn:#B4540A; --bad:#B3261E; --ui:"Manrope",system-ui,sans-serif; --serif:"Source Serif 4",Georgia,serif; }
   @media (prefers-color-scheme: dark) { :root { --bg:#141B18; --fg:#E9E7E0; --muted:#A4ADA7; --line:#2F3A35; --surface:#1C2420; --card:#202A25; --accent:#5FC2B2; --accent-ink:#0E1F1B; --accent-soft:#1E3A35; --price:#E2A75A; --ok:#6BCB86; --warn:#F0A35C; --bad:#F08A84; color-scheme: dark; } }
-  *{box-sizing:border-box} html,body{height:100%}
+  *{box-sizing:border-box} html,body{height:100%} [hidden]{display:none!important}
   body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--ui)}
   button,input,select{font:inherit;color:inherit}
   header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left))}
@@ -127,6 +127,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
-<script src="app.js?v=1"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
