@@ -9,11 +9,19 @@
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
+  function fiyatAyarYukle() {
+    const v = LS.get("op_fiyat", {}) || {};
+    const f = { oto: v.oto !== false, yuvarla: num(v.yuvarla) || 5,
+      sifir: Object.assign({ kaynak: "etiket", yon: 0, yuzde: 0 }, v.sifir || {}),
+      ikinci: Object.assign({ kaynak: "min", yon: 0, yuzde: 0 }, v.ikinci || (v.kaynak ? { kaynak: v.kaynak, yon: v.yon, yuzde: v.yuzde } : {})),
+      carpan: Object.assign({ "Çok iyi": 70, "İyi": 55, "Orta": 40, "Yıpranmış": 25 }, v.carpan || {}) };
+    return f;
+  }
   const st = {
     stream: null, track: null, torch: false, detector: null, zx: null, loopId: 0, okuyor: false,
     sonGorme: new Map(), bulunan: [], kitaplar: LS.get("op_kitaplar", []), dukkan: LS.get("op_dukkan", {}),
     ai: LS.get("op_ai", { key: "", model: "gemini-2.5-flash" }),
-    fiyat: Object.assign({ oto: true, kaynak: "min", yon: 0, yuzde: 0, yuvarla: 5, carpan: { "Yeni": 100, "Çok iyi": 70, "İyi": 55, "Orta": 40, "Yıpranmış": 25 } }, LS.get("op_fiyat", {})),
+    fiyat: null, // yardımcılar tanımlanınca yüklenir
     sonToplu: null, kunyeHedef: null,
   };
 
@@ -39,6 +47,7 @@
     } catch (e) {}
   }
   function flash() { const f = $("flash"); f.classList.add("on"); setTimeout(() => f.classList.remove("on"), 60); }
+  st.fiyat = fiyatAyarYukle();
 
   // ---------- sekmeler ----------
   const tabs = [...document.querySelectorAll('nav [role="tab"]')];
@@ -81,10 +90,11 @@
   // ---------- fiyat kuralı ----------
   const yuvarla = (p, y) => { y = Math.max(1, num(y) || 1); return Math.max(y, Math.round(p / y) * y); };
   function fiyatHesapla(k) {
-    const f = st.fiyat, p = k.piyasa; if (!p || !p.n) return null;
-    let x = p[f.kaynak] ?? p.min; if (x == null) return null;
-    x *= 1 + (num(f.yon) || 0) * Math.abs(num(f.yuzde) || 0) / 100;
-    x *= (num(f.carpan[k.durum]) ?? 100) / 100;
+    const f = st.fiyat, p = k.piyasa; if (!p || (!p.n && p.etiket == null)) return null;
+    const sifir = k.durum === "Yeni", kural = sifir ? f.sifir : f.ikinci;
+    let x = p[kural.kaynak]; if (x == null) x = p.etiket ?? p.max ?? p.min; if (x == null) return null; // etiket yoksa en pahalı (etikete en yakın), o da yoksa en ucuz
+    x *= 1 + (num(kural.yon) || 0) * Math.abs(num(kural.yuzde) || 0) / 100;
+    if (!sifir) x *= (num(f.carpan[k.durum]) ?? 100) / 100;
     return yuvarla(x, f.yuvarla);
   }
   function fiyatUygula(k) { if (!st.fiyat.oto || k.fiyatElle) return; const p = fiyatHesapla(k); if (p != null) { k.fiyat = p; k.fiyatOto = true; } }
@@ -93,11 +103,14 @@
     k.piyasa = { n: 0, bekliyor: true }; bulunanGoster();
     try {
       const soru = "Türkiye'de şu kitabın internetteki güncel satış fiyatlarını bul: " + (k.isbn ? "ISBN " + k.isbn + ", " : "") + "\"" + k.baslik + "\"" + (k.yazar ? " — " + k.yazar : "") + (k.yayinevi ? " (" + k.yayinevi + ")" : "") +
-        ". Yeni kitap satan mağazalara bak: kitapyurdu, dr, idefix, trendyol, hepsiburada, amazon.com.tr, bkmkitap, kitapsepeti, pandora. Her mağaza için satış fiyatını TL olarak ver. Sadece bu kitabın (aynı ISBN/aynı baskı) fiyatını al; başka kitabı, e-kitabı, ikinci eli alma. Bulamazsan boş dizi ver. Yalnızca JSON döndür: [{\"site\":\"kitapyurdu\",\"fiyat\":123.5}]";
+        ". Yeni kitap satan mağazalara bak: kitapyurdu, dr, idefix, trendyol, hepsiburada, amazon.com.tr, bkmkitap, kitapsepeti, pandora. Her mağaza için indirimli satış fiyatını (\"fiyat\") ve varsa üstü çizili etiket/liste fiyatını (\"etiket\") TL olarak ver. Sadece bu kitabın (aynı ISBN/aynı baskı) fiyatını al; başka kitabı, e-kitabı, ikinci eli alma. Bulamazsan boş dizi ver. Yalnızca JSON döndür: [{\"site\":\"kitapyurdu\",\"fiyat\":123.5,\"etiket\":180}]";
       const liste = await geminiAra(soru);
-      const f = (Array.isArray(liste) ? liste : []).map((x) => num(x && x.fiyat)).filter((v) => v != null && v > 5 && v < 20000).sort((a, b) => a - b);
-      if (!f.length) { k.piyasa = { n: 0 }; }
-      else k.piyasa = { n: f.length, min: f[0], max: f[f.length - 1], orta: f[Math.floor(f.length / 2)] };
+      const gecerli = (v) => v != null && v > 5 && v < 20000;
+      const f = (Array.isArray(liste) ? liste : []).map((x) => num(x && x.fiyat)).filter(gecerli).sort((a, b) => a - b);
+      const et = (Array.isArray(liste) ? liste : []).map((x) => num(x && x.etiket)).filter(gecerli).sort((a, b) => a - b);
+      const etiket = et.length ? et[Math.floor(et.length / 2)] : null; // mağazalar aynı etiketi yazar; ortancası sapmayı atar
+      if (!f.length && etiket == null) { k.piyasa = { n: 0 }; }
+      else k.piyasa = { n: f.length, min: f[0] ?? null, max: f[f.length - 1] ?? null, orta: f.length ? f[Math.floor(f.length / 2)] : null, etiket };
     } catch (e) { k.piyasa = { n: 0, hata: (e && (e.message || e.code)) || "hata" }; }
     fiyatUygula(k); bulunanGoster();
   }
@@ -379,8 +392,8 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     if (!p) return st.ai.key ? "" : "Otomatik fiyat için Ayarlar'dan Gemini anahtarı gir.";
     if (p.bekliyor) return "İnternet fiyatları aranıyor…";
     if (p.hata) return "Fiyat aranamadı: " + esc(p.hata);
-    if (!p.n) return "İnternette satış fiyatı bulunamadı; fiyatı elle yaz.";
-    return "Piyasa: " + tl(p.min) + (p.n > 1 ? " – " + tl(p.max) : "") + " (" + p.n + " mağaza)" + (k.fiyatOto ? " · kurala göre " + tl(num(k.fiyat)) : k.fiyatElle ? " · elle girildi" : "");
+    if (!p.n && p.etiket == null) return "İnternette satış fiyatı bulunamadı; fiyatı elle yaz.";
+    return (p.etiket != null ? "Etiket " + tl(p.etiket) + " · " : "") + (p.n ? "internet " + tl(p.min) + (p.n > 1 ? " – " + tl(p.max) : "") + " (" + p.n + " mağaza)" : "") + (k.fiyatOto ? " · kurala göre " + tl(num(k.fiyat)) : k.fiyatElle ? " · elle girildi" : "");
   }
   $("bulunan").addEventListener("input", (e) => {
     const card = e.target.closest("[data-i]"); const k = e.target.dataset.k; if (!card || !k) return; const it = st.bulunan[+card.dataset.i]; if (!it) return;
@@ -494,15 +507,20 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   });
 
   // fiyat kuralı
-  const CARPAN_ID = { "Yeni": "fc_Yeni", "Çok iyi": "fc_Cokiyi", "İyi": "fc_Iyi", "Orta": "fc_Orta", "Yıpranmış": "fc_Yipranmis" };
+  const CARPAN_ID = { "Çok iyi": "fc_Cokiyi", "İyi": "fc_Iyi", "Orta": "fc_Orta", "Yıpranmış": "fc_Yipranmis" };
+  const IKINCI = DURUMLAR.filter((d) => d !== "Yeni");
   function fiyatFormuYukle() {
-    const f = st.fiyat; $("fOto").value = f.oto ? "1" : "0"; $("fKaynak").value = f.kaynak; $("fYon").value = String(f.yon); $("fYuzde").value = f.yuzde; $("fYuvarla").value = String(f.yuvarla);
-    for (const d of DURUMLAR) $(CARPAN_ID[d]).value = f.carpan[d] ?? 100;
+    const f = st.fiyat; $("fOto").value = f.oto ? "1" : "0"; $("fYuvarla").value = String(f.yuvarla);
+    $("fsKaynak").value = f.sifir.kaynak; $("fsYon").value = String(f.sifir.yon); $("fsYuzde").value = f.sifir.yuzde;
+    $("fKaynak").value = f.ikinci.kaynak; $("fYon").value = String(f.ikinci.yon); $("fYuzde").value = f.ikinci.yuzde;
+    for (const d of IKINCI) $(CARPAN_ID[d]).value = f.carpan[d] ?? 100;
   }
   fiyatFormuYukle();
   $("fKaydet").addEventListener("click", () => {
-    const carpan = {}; for (const d of DURUMLAR) carpan[d] = Math.min(300, Math.max(1, num($(CARPAN_ID[d]).value) ?? 100));
-    st.fiyat = { oto: $("fOto").value === "1", kaynak: $("fKaynak").value, yon: num($("fYon").value) || 0, yuzde: Math.abs(num($("fYuzde").value) || 0), yuvarla: num($("fYuvarla").value) || 5, carpan };
+    const carpan = {}; for (const d of IKINCI) carpan[d] = Math.min(300, Math.max(1, num($(CARPAN_ID[d]).value) ?? 100));
+    st.fiyat = { oto: $("fOto").value === "1", yuvarla: num($("fYuvarla").value) || 5,
+      sifir: { kaynak: $("fsKaynak").value, yon: num($("fsYon").value) || 0, yuzde: Math.abs(num($("fsYuzde").value) || 0) },
+      ikinci: { kaynak: $("fKaynak").value, yon: num($("fYon").value) || 0, yuzde: Math.abs(num($("fYuzde").value) || 0) }, carpan };
     LS.set("op_fiyat", st.fiyat); fiyatFormuYukle();
     for (const k of st.bulunan) if (!k.fiyatElle) fiyatUygula(k);
     bulunanGoster(); $("fDurum").textContent = "Kaydedildi.";

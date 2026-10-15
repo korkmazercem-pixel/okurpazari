@@ -134,14 +134,22 @@
       <p class="hint">Kitap okununca internetteki satış fiyatları bulunur ve aşağıdaki kurala göre fiyat kendiliğinden yazılır; her kitabın fiyatını yine de elle değiştirebilirsin. Fiyat bulma için Gemini anahtarı gerekir.</p>
       <div class="fields">
         <label class="field">Otomatik fiyat<select id="fOto"><option value="1">Açık</option><option value="0">Kapalı</option></select></label>
-        <label class="field">Temel alınan<select id="fKaynak"><option value="min">İnternetteki en ucuz</option><option value="orta">Ortalama</option><option value="max">En pahalı</option></select></label>
-        <label class="field">Buna göre<select id="fYon"><option value="-1">daha ucuz</option><option value="0">aynı</option><option value="1">daha pahalı</option></select></label>
-        <label class="field">Yüzde<input id="fYuzde" inputmode="numeric" value="0"></label>
         <label class="field">Yuvarla<select id="fYuvarla"><option value="1">1 ₺</option><option value="5">5 ₺</option><option value="10">10 ₺</option></select></label>
       </div>
-      <h3>İkinci el: yeni fiyatın yüzde kaçı</h3>
+      <h3>Sıfır kitap (durumu "Yeni")</h3>
       <div class="fields">
-        <label class="field">Yeni<input id="fc_Yeni" inputmode="numeric" value="100"></label>
+        <label class="field">Temel alınan<select id="fsKaynak"><option value="etiket">Etiket (liste) fiyatı</option><option value="min">İnternetteki en ucuz</option><option value="orta">Ortalama</option><option value="max">En pahalı</option></select></label>
+        <label class="field">Buna göre<select id="fsYon"><option value="-1">daha ucuz</option><option value="0">aynı</option><option value="1">daha pahalı</option></select></label>
+        <label class="field">Yüzde<input id="fsYuzde" inputmode="numeric" value="0"></label>
+      </div>
+      <h3>İkinci el (diğer durumlar)</h3>
+      <div class="fields">
+        <label class="field">Temel alınan<select id="fKaynak"><option value="min">İnternetteki en ucuz (sıfır)</option><option value="orta">Ortalama</option><option value="max">En pahalı</option><option value="etiket">Etiket fiyatı</option></select></label>
+        <label class="field">Buna göre<select id="fYon"><option value="-1">daha ucuz</option><option value="0">aynı</option><option value="1">daha pahalı</option></select></label>
+        <label class="field">Yüzde<input id="fYuzde" inputmode="numeric" value="0"></label>
+      </div>
+      <p class="hint">Sonra duruma göre çarpılır (sıfır fiyatının yüzde kaçı):</p>
+      <div class="fields">
         <label class="field">Çok iyi<input id="fc_Cokiyi" inputmode="numeric" value="70"></label>
         <label class="field">İyi<input id="fc_Iyi" inputmode="numeric" value="55"></label>
         <label class="field">Orta<input id="fc_Orta" inputmode="numeric" value="40"></label>
@@ -158,6 +166,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
