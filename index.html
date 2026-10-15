@@ -79,6 +79,7 @@
         <button class="btn" id="elleEkle" type="button">Ekle</button>
       </div>
       <p class="status" id="durum">Hazır.</p>
+      <input class="sr" type="file" id="kunyeDosya" accept="image/*" capture="environment">
     </div>
     <div id="bulunanBand" hidden>
       <div class="row" style="justify-content:space-between">
@@ -96,6 +97,16 @@
       <button class="btn" id="disaAktar" type="button">Dışa aktar</button>
     </div>
     <textarea id="aktarim" hidden readonly></textarea>
+    <div class="band">
+      <h3>Toplu fiyat değişikliği</h3>
+      <div class="row">
+        <label class="field">Yön<select id="tYon"><option value="1">Yükselt (zam)</option><option value="-1">Düşür (indirim)</option></select></label>
+        <label class="field">Yüzde<input id="tYuzde" inputmode="numeric" placeholder="örn. 10" style="width:90px"></label>
+        <button class="btn primary" id="tUygula" type="button">Uygula</button>
+        <button class="btn" id="tGeriAl" type="button" hidden>Geri al</button>
+      </div>
+      <p class="hint" id="tDurum">Arama kutusu boşsa tüm kitaplara, doluysa yalnızca listede görünenlere uygulanır.</p>
+    </div>
     <div class="list" id="liste"><div class="empty">Henüz kitap yok. Tara sekmesinden rafını okut.</div></div>
   </section>
 
@@ -119,14 +130,34 @@
       <div class="row"><button class="btn primary" id="aiKaydet" type="button">Anahtarı kaydet</button><button class="btn" id="aiTest" type="button">Dene</button><span class="status" id="aiDurum"></span></div>
     </div>
     <div class="band">
+      <h3>Otomatik fiyat</h3>
+      <p class="hint">Kitap okununca internetteki satış fiyatları bulunur ve aşağıdaki kurala göre fiyat kendiliğinden yazılır; her kitabın fiyatını yine de elle değiştirebilirsin. Fiyat bulma için Gemini anahtarı gerekir.</p>
+      <div class="fields">
+        <label class="field">Otomatik fiyat<select id="fOto"><option value="1">Açık</option><option value="0">Kapalı</option></select></label>
+        <label class="field">Temel alınan<select id="fKaynak"><option value="min">İnternetteki en ucuz</option><option value="orta">Ortalama</option><option value="max">En pahalı</option></select></label>
+        <label class="field">Buna göre<select id="fYon"><option value="-1">daha ucuz</option><option value="0">aynı</option><option value="1">daha pahalı</option></select></label>
+        <label class="field">Yüzde<input id="fYuzde" inputmode="numeric" value="0"></label>
+        <label class="field">Yuvarla<select id="fYuvarla"><option value="1">1 ₺</option><option value="5">5 ₺</option><option value="10">10 ₺</option></select></label>
+      </div>
+      <h3>İkinci el: yeni fiyatın yüzde kaçı</h3>
+      <div class="fields">
+        <label class="field">Yeni<input id="fc_Yeni" inputmode="numeric" value="100"></label>
+        <label class="field">Çok iyi<input id="fc_Cokiyi" inputmode="numeric" value="70"></label>
+        <label class="field">İyi<input id="fc_Iyi" inputmode="numeric" value="55"></label>
+        <label class="field">Orta<input id="fc_Orta" inputmode="numeric" value="40"></label>
+        <label class="field">Yıpranmış<input id="fc_Yipranmis" inputmode="numeric" value="25"></label>
+      </div>
+      <div class="row"><button class="btn primary" id="fKaydet" type="button">Kaydet</button><span class="status" id="fDurum"></span></div>
+    </div>
+    <div class="band">
       <h3>Platform</h3>
-      <dl class="kv"><dt>Satış komisyonu</dt><dd id="pKom">%0</dd><dt>Aylık abonelik</dt><dd id="pAbo">0 ₺</dd><dt>Sürüm</dt><dd>0.1 — raf tarama (yerel kayıt)</dd></dl>
+      <dl class="kv"><dt>Satış komisyonu</dt><dd id="pKom">%0</dd><dt>Aylık abonelik</dt><dd id="pAbo">0 ₺</dd><dt>Sürüm</dt><dd>0.2 — raf tarama + otomatik fiyat (yerel kayıt)</dd></dl>
       <p class="hint">Kayıtlar şimdilik bu telefonda tutulur; hesap ve ortak veritabanı sonraki sürümde.</p>
     </div>
   </section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
