@@ -314,7 +314,15 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   const bugun = () => new Date().toISOString().slice(0, 10);
   st.biten = LS.get("op_biten", {}); // model → günlük hakkının bittiği gün
   const modelBitti = (m) => st.biten[m] === bugun();
-  async function geminiIstek(body) {
+  // düşünme (reasoning) adımını kısmak okuma hızını belirgin artırır; ayar modele göre değişir, model reddederse ayarsız gönderilir
+  st.dusunmeYok = typeof st.dusunmeYok === "object" && st.dusunmeYok ? st.dusunmeYok : {};
+  function dusunmeAyari(model) {
+    if (st.dusunmeYok[model]) return null;
+    if (/^gemini-2\.5/.test(model)) return { thinkingBudget: 0 };
+    if (/^gemini-3/.test(model)) return { thinkingLevel: "low" };
+    return null;
+  }
+  async function geminiIstek(temel, hizli) {
     const key = (st.ai.key || "").trim();
     if (!key) throw { code: "anahtar_yok" };
     const sira = [st.ai.model, ...MODELLER].filter((m, i, a) => m && a.indexOf(m) === i && !modelBitti(m));
@@ -327,6 +335,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
         const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key);
         let kota = false;
         for (let deneme = 0; deneme < 2; deneme++) { // 429 dakikalık sınır: aynı modeli 2,5 sn sonra bir kez daha dene
+          const body = JSON.parse(JSON.stringify(temel)); const da = hizli ? dusunmeAyari(model) : null; if (da) { body.generationConfig = body.generationConfig || {}; body.generationConfig.thinkingConfig = da; }
           let r;
           try { r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
           catch (e) { son = { code: "baglanti", message: "İnternet bağlantısı yok ya da kesildi" }; kalici = false; break; }
@@ -337,7 +346,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
           }
           let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {}
           son = { code: "http_" + r.status, message: m };
-          if (r.status === 400 && /thinking/i.test(m) && body.generationConfig && body.generationConfig.thinkingConfig) { delete body.generationConfig.thinkingConfig; st.dusunmeYok = true; deneme--; continue; } // bu model düşünme ayarını kabul etmiyor: ayarsız tekrar
+          if (r.status === 400 && da && /thinking|invalid argument|unknown name|not supported/i.test(m)) { st.dusunmeYok[model] = true; deneme--; continue; } // bu model düşünme ayarını kabul etmiyor: ayarsız tekrar
           if (r.status === 429 && !aramaKapali(son) && gunlukKota(m)) { st.biten[model] = bugun(); LS.set("op_biten", st.biten); kota = false; break; } // günlük hak bitti: bu model bugün atlanır, sıradakine geç
           kota = r.status === 429 && !aramaKapali(son);
           if (kota && deneme === 0) { kalici = false; await new Promise((res) => setTimeout(res, 2500)); continue; }
@@ -360,8 +369,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     throw son || { code: "model_yok", message: "Çalışan model bulunamadı" };
   }
   async function gemini(parts) {
-    const gc = { temperature: 0.1, responseMimeType: "application/json" }; if (!st.dusunmeYok) gc.thinkingConfig = { thinkingBudget: 0 }; // düşünme adımı kapalı: okuma belirgin hızlanır
-    const text = await geminiIstek({ contents: [{ parts }], generationConfig: gc });
+    const text = await geminiIstek({ contents: [{ parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json" } }, true);
     const m = text.match(/[\[{][\s\S]*[\]}]/);
     return JSON.parse(m ? m[0] : text);
   }
