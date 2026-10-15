@@ -20,7 +20,7 @@
   const st = {
     stream: null, track: null, torch: false, detector: null, zx: null, loopId: 0, okuyor: false,
     sonGorme: new Map(), bulunan: [], kitaplar: LS.get("op_kitaplar", []), dukkan: LS.get("op_dukkan", {}),
-    ai: LS.get("op_ai", { key: "", model: "gemini-2.5-flash" }),
+    ai: Object.assign({ key: "", model: "gemini-3.8-flash" }, LS.get("op_ai", {})),
     fiyat: null, // yardımcılar tanımlanınca yüklenir
     sonToplu: null, kunyeHedef: null,
   };
@@ -99,7 +99,7 @@
   }
   function fiyatUygula(k) { if (!st.fiyat.oto || k.fiyatElle) return; const p = fiyatHesapla(k); if (p != null) { k.fiyat = p; k.fiyatOto = true; } }
   async function piyasaFiyat(k) {
-    if (!st.ai.key || !st.fiyat.oto || k.piyasa) return;
+    if (!st.ai.key || !st.fiyat.oto || k.piyasa || st.aramaKapali) return;
     k.piyasa = { n: 0, bekliyor: true }; bulunanGoster();
     try {
       const soru = "Türkiye'de şu kitabın internetteki güncel satış fiyatlarını bul: " + (k.isbn ? "ISBN " + k.isbn + ", " : "") + "\"" + k.baslik + "\"" + (k.yazar ? " — " + k.yazar : "") + (k.yayinevi ? " (" + k.yayinevi + ")" : "") +
@@ -111,7 +111,10 @@
       const etiket = et.length ? et[Math.floor(et.length / 2)] : null; // mağazalar aynı etiketi yazar; ortancası sapmayı atar
       if (!f.length && etiket == null) { k.piyasa = { n: 0 }; }
       else k.piyasa = { n: f.length, min: f[0] ?? null, max: f[f.length - 1] ?? null, orta: f.length ? f[Math.floor(f.length / 2)] : null, etiket };
-    } catch (e) { k.piyasa = { n: 0, hata: (e && (e.message || e.code)) || "hata" }; }
+    } catch (e) {
+      if (aramaKapali(e)) { k.piyasa = { n: 0, hata: "internet araması bu Google paketinde kapalı" }; st.aramaKapali = true; durum("Fiyat arama için Google hesabında faturalandırma açılması gerekiyor (AI Studio → Set up billing; ayda 5.000 arama bedava). Kapak/sırt okuma bundan etkilenmez.", true); }
+      else k.piyasa = { n: 0, hata: (e && (e.message || e.code)) || "hata" };
+    }
     fiyatUygula(k); bulunanGoster();
   }
 
@@ -262,29 +265,40 @@
 Alanlar: "baslik", "yazar", "yayinevi", "baski" (kaçıncı baskı, sayı; görünmüyorsa null), "yil" (sayı; görünmüyorsa null), "isbn" (barkodun yanında yazan 13 ya da 10 haneli numara, boşluksuz; görünmüyorsa null), "kaynak" ("kapak", "sirt" veya "barkod"), "guven" (0-1).
 Kurallar: Okuyamadığın alanı null bırak, asla uydurma. Sırtlarda yazar genelde üstte/altta küçük yazar, en altta yayınevi logosu olur. Türkçe karakterleri koru. Kitap olmayan nesneleri atla.
 Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","baski":null,"yil":null,"isbn":null,"kaynak":"sirt","guven":0.9}]`;
-  async function gemini(parts, model) {
+  // Model sırası: seçili model çalışmazsa (hesaba kapalı / kaldırılmış) sıradaki denenir ve kalıcı seçilir.
+  const MODELLER = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"];
+  const modelHatasi = (e) => (e.code === "http_404" || e.code === "http_400" || e.code === "http_403") && /no longer available|not found|not supported|does not exist|deprecated|is not available/i.test(e.message || "") && !/grounding|google_search|search/i.test(e.message || "");
+  async function geminiIstek(body) {
     const key = (st.ai.key || "").trim();
     if (!key) throw { code: "anahtar_yok" };
-    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model || st.ai.model || "gemini-2.5-flash") + ":generateContent?key=" + encodeURIComponent(key);
-    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json" } }) });
-    if (!r.ok) { let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {} throw { code: "http_" + r.status, message: m }; }
-    const j = await r.json();
-    const text = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+    const sira = [st.ai.model, ...MODELLER].filter((m, i, a) => m && a.indexOf(m) === i);
+    let son = null;
+    for (const model of sira) {
+      const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key);
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (r.ok) {
+        if (model !== st.ai.model) { st.ai.model = model; LS.set("op_ai", st.ai); const s = $("aiModel"); if (s) s.value = model; }
+        const j = await r.json();
+        return (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+      }
+      let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {}
+      son = { code: "http_" + r.status, message: m };
+      if (!modelHatasi(son)) throw son;
+    }
+    throw son || { code: "model_yok", message: "Çalışan model bulunamadı" };
+  }
+  async function gemini(parts) {
+    const text = await geminiIstek({ contents: [{ parts }], generationConfig: { temperature: 0.1, responseMimeType: "application/json" } });
     const m = text.match(/[\[{][\s\S]*[\]}]/);
     return JSON.parse(m ? m[0] : text);
   }
   // Google aramalı Gemini: fiyat bulma (araçlı istekte JSON modu kullanılamaz, metinden ayıklanır)
   async function geminiAra(soru) {
-    const key = (st.ai.key || "").trim();
-    if (!key) throw { code: "anahtar_yok" };
-    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(st.ai.model || "gemini-2.5-flash") + ":generateContent?key=" + encodeURIComponent(key);
-    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: soru }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } }) });
-    if (!r.ok) { let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {} throw { code: "http_" + r.status, message: m }; }
-    const j = await r.json();
-    const text = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+    const text = await geminiIstek({ contents: [{ parts: [{ text: soru }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } });
     const m = text.match(/\[[\s\S]*\]/);
     try { return JSON.parse(m ? m[0] : text); } catch (e) { return []; }
   }
+  const aramaKapali = (e) => /google_search|grounding|search tool|billing|free tier|not enabled|not supported/i.test((e && e.message) || "");
   async function gorselOku(blob) {
     st.okuyor = true;
     try {
@@ -406,7 +420,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   });
   $("bulunan").addEventListener("click", (e) => {
     const b = e.target.closest("[data-sil]"); if (b) { st.bulunan.splice(+b.dataset.sil, 1); bulunanGoster(); return; }
-    const f = e.target.closest("[data-fiyat]"); if (f) { const it = st.bulunan[+f.dataset.fiyat]; if (!it) return; if (!st.ai.key) { durum("Fiyat bulma için Ayarlar'dan Gemini anahtarı gir.", true); return; } it.piyasa = null; it.fiyatElle = false; st.fiyat.oto ? piyasaFiyat(it) : durum("Ayarlar'da otomatik fiyat kapalı.", true); return; }
+    const f = e.target.closest("[data-fiyat]"); if (f) { const it = st.bulunan[+f.dataset.fiyat]; if (!it) return; if (!st.ai.key) { durum("Fiyat bulma için Ayarlar'dan Gemini anahtarı gir.", true); return; } it.piyasa = null; it.fiyatElle = false; st.aramaKapali = false; st.fiyat.oto ? piyasaFiyat(it) : durum("Ayarlar'da otomatik fiyat kapalı.", true); return; }
     const ky = e.target.closest("[data-kunye]"); if (ky) { const it = st.bulunan[+ky.dataset.kunye]; if (!it) return; if (!st.ai.key) { durum("Künye okuma için Ayarlar'dan Gemini anahtarı gir.", true); return; } st.kunyeHedef = it.id; $("kunyeDosya").click(); }
   });
   $("kunyeDosya").addEventListener("change", async (e) => {
@@ -495,15 +509,19 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   $("dAd").value = st.dukkan.ad || ""; $("dSehir").value = st.dukkan.sehir || ""; $("dTel").value = st.dukkan.telefon || "";
   $("dKaydet").addEventListener("click", () => { st.dukkan = { ad: $("dAd").value.trim(), sehir: $("dSehir").value.trim(), telefon: $("dTel").value.trim() }; LS.set("op_dukkan", st.dukkan); $("dDurum").textContent = "Kaydedildi."; $("kimlik").textContent = (st.dukkan.ad || "kitapçı") + " · raf tarama"; });
   if (st.dukkan.ad) $("kimlik").textContent = st.dukkan.ad + " · raf tarama";
-  $("aiKey").value = st.ai.key || ""; $("aiModel").value = st.ai.model || "gemini-2.5-flash";
+  $("aiKey").value = st.ai.key || ""; $("aiModel").value = MODELLER.includes(st.ai.model) ? st.ai.model : "gemini-3.8-flash";
   const aiHint = () => { $("aiHint").textContent = st.ai.key ? "Anahtar kayıtlı: Kapak/sırt oku ve fotoğraftan okuma açık." : "Anahtar girilmemiş. Barkod okuma anahtarsız çalışır; kapak ve sırt okuma için bir Gemini API anahtarı gerekir."; };
   aiHint();
-  $("aiKaydet").addEventListener("click", () => { st.ai = { key: $("aiKey").value.trim(), model: $("aiModel").value }; LS.set("op_ai", st.ai); $("aiDurum").textContent = "Kaydedildi."; aiHint(); });
+  $("aiKaydet").addEventListener("click", () => { st.ai = { key: $("aiKey").value.trim(), model: $("aiModel").value }; st.aramaKapali = false; LS.set("op_ai", st.ai); $("aiDurum").textContent = "Kaydedildi."; aiHint(); });
   $("aiTest").addEventListener("click", async () => {
     st.ai = { key: $("aiKey").value.trim(), model: $("aiModel").value }; LS.set("op_ai", st.ai); aiHint();
     $("aiDurum").textContent = "Deneniyor…";
-    try { const r = await gemini([{ text: 'Yalnızca şu JSON\'u döndür: {"ok":true}' }]); $("aiDurum").textContent = r && r.ok ? "Çalışıyor." : "Cevap geldi ama beklenmedik."; }
-    catch (e) { $("aiDurum").textContent = e.code === "anahtar_yok" ? "Anahtar boş." : "Hata: " + (e.message || e.code); }
+    let okuma;
+    try { const r = await gemini([{ text: 'Yalnızca şu JSON\'u döndür: {"ok":true}' }]); okuma = r && r.ok ? "Okuma çalışıyor (" + st.ai.model + ")." : "Cevap geldi ama beklenmedik."; }
+    catch (e) { $("aiDurum").textContent = e.code === "anahtar_yok" ? "Anahtar boş." : "Hata: " + (e.message || e.code); return; }
+    $("aiDurum").textContent = okuma + " Fiyat arama deneniyor…";
+    try { await geminiAra("Yalnızca şu JSON'u döndür: [{\"site\":\"deneme\",\"fiyat\":1}]"); st.aramaKapali = false; $("aiDurum").textContent = okuma + " Fiyat arama çalışıyor."; }
+    catch (e) { st.aramaKapali = aramaKapali(e); $("aiDurum").textContent = okuma + (st.aramaKapali ? " Fiyat arama bu Google paketinde kapalı: AI Studio'da 'Set up billing' açılınca çalışır (ayda 5.000 arama bedava)." : " Fiyat arama hatası: " + (e.message || e.code)); }
   });
 
   // fiyat kuralı
