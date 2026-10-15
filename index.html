@@ -159,6 +159,8 @@
         <label class="field">Şehir / ilçe<input id="dSehir"></label>
         <label class="field">Telefon (WhatsApp)<input id="dTel" inputmode="tel"></label>
         <label class="field wide">Adres (müşteriye görünmez; kargo/iade için)<input id="dAdres"></label>
+        <label class="field wide">IBAN (havale ile ödeme için; sipariş verene gösterilir)<input id="dIban" placeholder="TR.. .... .... .... .... .... .." autocomplete="off"></label>
+        <label class="field wide">Hesap sahibi adı<input id="dHesapAdi" placeholder="IBAN'ın kayıtlı olduğu ad"></label>
       </div>
       <div class="row"><button class="btn primary" id="dKaydet" type="button">Kaydet</button><span class="status" id="dDurum"></span></div>
     </div>
@@ -235,6 +237,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="bulut.js?v=1"></script>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

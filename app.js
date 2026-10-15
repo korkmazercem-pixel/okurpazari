@@ -730,11 +730,13 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   });
 
   // ---------- ayarlar ----------
-  $("dAd").value = st.dukkan.ad || ""; $("dSehir").value = st.dukkan.sehir || ""; $("dTel").value = st.dukkan.telefon || ""; $("dAdres").value = st.dukkan.adres || "";
+  $("dAd").value = st.dukkan.ad || ""; $("dSehir").value = st.dukkan.sehir || ""; $("dTel").value = st.dukkan.telefon || ""; $("dAdres").value = st.dukkan.adres || ""; $("dIban").value = st.dukkan.iban || ""; $("dHesapAdi").value = st.dukkan.hesap_adi || "";
   $("dKaydet").addEventListener("click", async () => {
-    st.dukkan = { ad: $("dAd").value.trim(), sehir: $("dSehir").value.trim(), telefon: $("dTel").value.trim(), adres: $("dAdres").value.trim() }; LS.set("op_dukkan", st.dukkan);
+    const iban = $("dIban").value.replace(/\s+/g, "").toUpperCase();
+    if (iban && !/^TR\d{24}$/.test(iban)) { $("dDurum").textContent = "IBAN TR ile başlayıp 26 karakter olmalı (TR + 24 rakam)."; return; }
+    st.dukkan = { ad: $("dAd").value.trim(), sehir: $("dSehir").value.trim(), telefon: $("dTel").value.trim(), adres: $("dAdres").value.trim(), iban: iban ? iban.replace(/(.{4})/g, "$1 ").trim() : "", hesap_adi: $("dHesapAdi").value.trim() }; LS.set("op_dukkan", st.dukkan); $("dIban").value = st.dukkan.iban;
     $("kimlik").textContent = (st.dukkan.ad || "kitapçı") + " · raf tarama"; $("dDurum").textContent = "Kaydedildi.";
-    if (st.kullanici && OP.sb) { const { error } = await OP.sb.from("profiller").update({ dukkan: st.dukkan.ad, sehir: st.dukkan.sehir, telefon: st.dukkan.telefon, adres: st.dukkan.adres }).eq("id", st.kullanici.id); $("dDurum").textContent = error ? "Yerel kaydedildi; buluta yazılamadı: " + OP.hataMetni(error) : "Kaydedildi (bulut dahil)."; }
+    if (st.kullanici && OP.sb) { const { error } = await OP.sb.from("profiller").update({ dukkan: st.dukkan.ad, sehir: st.dukkan.sehir, telefon: st.dukkan.telefon, adres: st.dukkan.adres, iban: st.dukkan.iban || null, hesap_adi: st.dukkan.hesap_adi || null }).eq("id", st.kullanici.id); $("dDurum").textContent = error ? "Yerel kaydedildi; buluta yazılamadı: " + OP.hataMetni(error) : "Kaydedildi (bulut dahil)."; }
   });
   if (st.dukkan.ad) $("kimlik").textContent = st.dukkan.ad + " · raf tarama";
   if (!st.ai.secildi && st.ai.model !== "gemini-3.5-flash-lite") { st.ai.model = "gemini-3.5-flash-lite"; LS.set("op_ai", st.ai); } // kullanıcı seçmediyse günlük hakkı bol model
@@ -787,7 +789,8 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     if (!girisli) { $("yonetimBand").hidden = true; return; }
     const p = st.profil || {};
     $("hesapBilgi").textContent = (p.dukkan ? p.dukkan + " · " : "") + (st.kullanici.email || "") + (p.rol === "admin" ? " · yönetici" : "");
-    if (p.dukkan && !st.dukkan.ad) { st.dukkan = { ad: p.dukkan, sehir: p.sehir || "", telefon: p.telefon || "", adres: p.adres || "" }; LS.set("op_dukkan", st.dukkan); $("dAd").value = st.dukkan.ad; $("dSehir").value = st.dukkan.sehir; $("dTel").value = st.dukkan.telefon; $("dAdres").value = st.dukkan.adres; $("kimlik").textContent = st.dukkan.ad + " · raf tarama"; }
+    if (p.dukkan) { st.dukkan = { ad: p.dukkan, sehir: p.sehir || st.dukkan.sehir || "", telefon: p.telefon || st.dukkan.telefon || "", adres: p.adres || st.dukkan.adres || "", iban: p.iban || st.dukkan.iban || "", hesap_adi: p.hesap_adi || st.dukkan.hesap_adi || "" }; LS.set("op_dukkan", st.dukkan); $("dAd").value = st.dukkan.ad; $("dSehir").value = st.dukkan.sehir; $("dTel").value = st.dukkan.telefon; $("dAdres").value = st.dukkan.adres; $("dIban").value = st.dukkan.iban; $("dHesapAdi").value = st.dukkan.hesap_adi; $("kimlik").textContent = st.dukkan.ad + " · raf tarama"; }
+    if (!st.dukkan.iban) $("dDurum").textContent = "Havale ile satış için IBAN'ını gir; sipariş verene gösterilir.";
     $("yonetimBand").hidden = p.rol !== "admin";
     if (p.rol === "admin") yonetimYukle();
   }
@@ -795,7 +798,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     if (!sb) { $("girisDurum").textContent = "Bulut kütüphanesi yüklenemedi (internet?)."; return; }
     const s = await OPB.oturum(); st.kullanici = s ? s.user : null; st.profil = s ? await OPB.profil() : null;
     await hesapGoster();
-    if (st.kullanici) { await bulutCek(); siparisleriYukle(); }
+    if (st.kullanici) { await bulutCek(); siparisleriYukle(); siparisGozcu(); }
     sb.auth.onAuthStateChange(async (olay, oturum) => {
       const yeni = oturum ? oturum.user : null; const degisti = (yeni && yeni.id) !== (st.kullanici && st.kullanici.id);
       st.kullanici = yeni; if (degisti) { st.profil = yeni ? await OPB.profil() : null; await hesapGoster(); if (yeni) { await bulutCek(); siparisleriYukle(); } }
@@ -846,6 +849,15 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     siparisleriYukle();
   });
   $("siparisYenile").addEventListener("click", siparisleriYukle);
+  let sonYeniSayi = null;
+  async function siparisGozcu() {
+    if (!sb || !st.kullanici || document.hidden) return;
+    try { const { count } = await sb.from("siparisler").select("id", { count: "exact", head: true }).eq("satici", st.kullanici.id).eq("durum", "yeni"); if (count == null) return;
+      $("siparisRozet").hidden = !count; $("siparisRozet").textContent = count;
+      if (sonYeniSayi != null && count > sonYeniSayi) { bip(); setTimeout(bip, 200); setTimeout(bip, 400); durum("Yeni sipariş geldi! Siparişler sekmesine bak."); if ($("tab-siparis").getAttribute("aria-selected") === "true") siparisleriYukle(); }
+      sonYeniSayi = count; } catch (e) {}
+  }
+  setInterval(siparisGozcu, 60000); document.addEventListener("visibilitychange", () => { if (!document.hidden) siparisGozcu(); });
   $("tab-siparis").addEventListener("click", siparisleriYukle);
 
   // yönetim (platform sahibi)

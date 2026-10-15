@@ -89,14 +89,23 @@
     const sonuclar = [];
     for (const [satici, g] of Object.entries(gruplar)) {
       const { data, error } = await sb.rpc("siparis_ver", { p_satici: satici, p_ad: ad, p_telefon: tel, p_adres: adres, p_odeme: odeme, p_not: not_ || null, p_kalemler: g.map((s) => ({ kitap_id: s.id, adet: s.adet })) });
-      if (error) sonuclar.push({ dukkan: g[0].dukkan, hata: hataMetni(error) }); else { sonuclar.push({ dukkan: g[0].dukkan, no: data }); st.sepet = st.sepet.filter((s) => s.satici !== satici); }
+      if (error) sonuclar.push({ dukkan: g[0].dukkan, hata: hataMetni(error) }); else { const d = (data && typeof data === "object") ? data : { id: data }; sonuclar.push({ dukkan: d.dukkan || g[0].dukkan, no: d.id, toplam: d.toplam, iban: d.iban, hesap_adi: d.hesap_adi, telefon: d.telefon, odeme }); st.sepet = st.sepet.filter((s) => s.satici !== satici); }
     }
     sepetKaydet(); $("siparisVer").disabled = false; $("siparisVer").textContent = "Siparişi gönder";
     const basarili = sonuclar.filter((s) => s.no);
     if (basarili.length) {
       $("sepetIcerik").innerHTML = ""; $("odemeAlan").hidden = st.sepet.length === 0;
       $("sonuc").hidden = false;
-      $("sonuc").innerHTML = `<div class="bos" style="border-style:solid;border-color:var(--ok)"><div class="ok">Siparişin alındı 🎉</div><p>${basarili.map((s) => esc(s.dukkan || "Kitapçı") + " — sipariş no " + esc(String(s.no).slice(0, 8).toUpperCase())).join("<br>")}</p><p class="not">Kitapçı seni ${esc(tel)} numarasından arayacak ya da WhatsApp'tan yazacak; ödeme ve kargo orada netleşir.</p>${sonuclar.filter((s) => s.hata).map((s) => `<p class="hata">${esc(s.dukkan || "")}: ${esc(s.hata)}</p>`).join("")}</div>`;
+      const waLink = (t) => { const d = String(t || "").replace(/\D/g, ""); if (!d) return ""; const n = d.startsWith("90") ? d : d.startsWith("0") ? "9" + d : "90" + d; return "https://wa.me/" + n; };
+      $("sonuc").innerHTML = `<div class="bos" style="border-style:solid;border-color:var(--ok);text-align:left"><div class="ok" style="text-align:center">Siparişin alındı 🎉</div>` + basarili.map((s) => {
+        const no = String(s.no).slice(0, 8).toUpperCase(); const wa = waLink(s.telefon);
+        let odemeHtml = "";
+        if (s.odeme === "havale") odemeHtml = s.iban ? `<p><b>Havale / EFT bilgileri</b><br>Alıcı: ${esc(s.hesap_adi || s.dukkan || "")}<br>IBAN: <b style="font-family:ui-monospace,monospace">${esc(s.iban)}</b><br>Tutar: <b>${tl(s.toplam)}</b> · Açıklama: <b>OkurPazarı ${no}</b><br><button class="btn small" type="button" data-kopyala="${esc(String(s.iban).replace(/\s+/g, ""))}">IBAN'ı kopyala</button></p><p class="not">Ödemeyi yapınca kitapçı siparişi onaylar ve kargolar.</p>` : `<p class="not">Kitapçı IBAN'ını seninle paylaşacak (${wa ? `<a href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : "telefonla arayacak"}).</p>`;
+        else if (s.odeme === "kapida") odemeHtml = `<p class="not">Kapıda ödeme: kargo gelince ödersin. Kitapçı onaylayıp kargolayacak.</p>`;
+        else odemeHtml = `<p class="not">Kitapçıyla anlaşmak için: ${wa ? `<a href="${wa}?text=${encodeURIComponent("Merhaba, OkurPazarı'ndan " + no + " numaralı siparişi verdim.")}" target="_blank" rel="noopener">WhatsApp'tan yaz</a>` : "kitapçı seni arayacak"}.</p>`;
+        return `<div style="margin-top:10px"><b>${esc(s.dukkan || "Kitapçı")}</b> — sipariş no <b>${esc(no)}</b> · ${tl(s.toplam)}${odemeHtml}</div>`;
+      }).join("") + `<p class="not">Sipariş numaranı sakla. Üye olursan "Hesabım → Siparişlerim"de durumunu görürsün.</p>${sonuclar.filter((s) => s.hata).map((s) => `<p class="hata">${esc(s.dukkan || "")}: ${esc(s.hata)}</p>`).join("")}</div>`;
+      $("sonuc").querySelectorAll("[data-kopyala]").forEach((b) => b.addEventListener("click", async () => { try { await navigator.clipboard.writeText(b.dataset.kopyala); b.textContent = "Kopyalandı ✓"; } catch (e) {} }));
       document.querySelectorAll("[data-ekle]").forEach((b) => { if (!st.sepet.find((s) => s.id === b.dataset.ekle)) { b.textContent = "Sepete ekle"; b.classList.add("primary"); } });
       ara(true);
     } else $("oHata").textContent = sonuclar.map((s) => (s.dukkan || "") + ": " + s.hata).join(" · ");

@@ -1,6 +1,6 @@
 /* OkurPazarı service worker — uygulama gibi yüklenebilsin ve çevrimdışı açılsın diye.
    Ağ öncelikli: internet varsa her zaman güncel sürüm gelir (yeniden yükleme gerekmez); yoksa son kopya açılır. */
-const CACHE = "okurpazari-v5";
+const CACHE = "okurpazari-v6";
 const KABUK = ["./", "./index.html", "./app.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(KABUK).catch(() => {}))); self.skipWaiting(); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
