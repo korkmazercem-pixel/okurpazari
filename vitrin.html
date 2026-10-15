@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EE3F7A">
+<title>OkurPazarı — Kitap Vitrini</title>
+<meta name="description" content="Türkiye'nin kitapçılarından yeni ve ikinci el kitaplar. Ara, sepete at, kitapçıdan kapına gelsin.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+<style>
+  :root { --bg:#FBF8F4; --fg:#1F1B24; --muted:#6B6473; --line:#EAE3E6; --surface:#FFFFFF; --card:#FFFFFF; --g1:#FF8A3D; --g2:#EE3F7A; --g3:#8A4DFF; --accent:#EE3F7A; --accent-2:#B5306A; --accent-soft:#FDE4EC; --amber:#E0661F; --amber-soft:#FFE9D9; --plum:#7A45E6; --plum-soft:#ECE4FF; --price:#D9480F; --ok:#1F8A4C; --warn:#C25A12; --bad:#C62828; --shadow:0 1px 2px rgba(31,27,36,.05),0 8px 22px rgba(238,63,122,.08); --ui:"Manrope",system-ui,sans-serif; --serif:"Source Serif 4",Georgia,serif; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#17131C; --fg:#F1ECF3; --muted:#A9A1B1; --line:#2E2735; --surface:#1F1926; --card:#241D2C; --g1:#FF9A55; --g2:#F0568C; --g3:#A070FF; --accent:#F0568C; --accent-2:#FF8DB6; --accent-soft:#3A1F2C; --amber:#FFA266; --amber-soft:#3A2618; --plum:#B899FF; --plum-soft:#2E2340; --price:#FFB074; --ok:#6BCB86; --warn:#F0A35C; --bad:#F08A84; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 22px rgba(0,0,0,.35); color-scheme: dark; } }
+  *{box-sizing:border-box} [hidden]{display:none!important}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--ui)}
+  button,input,select,textarea{font:inherit;color:inherit}
+  header{position:sticky;top:0;z-index:5;background:linear-gradient(120deg,var(--g1),var(--g2) 55%,var(--g3));color:#fff;padding:12px max(16px,env(safe-area-inset-right)) 12px max(16px,env(safe-area-inset-left));box-shadow:0 2px 10px rgba(0,0,0,.18)}
+  .ust{max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .marka{font:700 24px var(--serif);display:flex;align-items:center;gap:8px;text-decoration:none;color:#fff} .marka i{display:inline-block;width:14px;height:20px;border-radius:3px;background:linear-gradient(90deg,#fff 0 30%,rgba(255,255,255,.55) 30% 60%,#fff 60%)}
+  .ara{flex:1 1 260px;display:flex;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+  .ara input{flex:1;border:0;padding:12px 14px;font-size:16px;color:#1F1B24;min-width:0;background:#fff} .ara button{border:0;background:#1F1B24;color:#fff;padding:0 16px;font-weight:700;cursor:pointer}
+  .ustbtn{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer;text-decoration:none;white-space:nowrap}
+  .ustbtn.sepet{background:#fff;color:var(--accent-2)}
+  main{max-width:1100px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right)) 90px max(16px,env(safe-area-inset-left))}
+  .filtre{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .filtre select{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 10px;font-weight:600}
+  .sayi{color:var(--muted);font-size:13px;margin-left:auto}
+  .izgara{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+  .kart{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;transition:transform .08s} .kart:active{transform:scale(.99)}
+  .kapak{aspect-ratio:2/3;background:linear-gradient(160deg,var(--plum-soft),var(--accent-soft));display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+  .kapak img{width:100%;height:100%;object-fit:cover;display:block} .kapak .yok{padding:12px;text-align:center;font:600 14px var(--serif);color:var(--accent-2)}
+  .kapak .durum{position:absolute;left:8px;top:8px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.92);color:var(--accent-2)}
+  .govde{padding:10px;display:grid;gap:4px;flex:1} .baslik{font:600 15px/1.25 var(--serif)} .yazar{color:var(--muted);font-size:13px} .dukkan{color:var(--muted);font-size:12px}
+  .alt{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:auto;padding-top:6px}
+  .fiyat{color:var(--price);font-weight:800;font-size:17px;font-variant-numeric:tabular-nums}
+  .btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
+  .btn.primary{background:linear-gradient(120deg,var(--g1),var(--g2) 60%,var(--g3));color:#fff;border-color:transparent;box-shadow:0 6px 16px rgba(238,63,122,.30)} .btn.small{padding:6px 10px;font-size:13px} .btn.danger{color:var(--bad)}
+  .bos{padding:40px 12px;text-align:center;color:var(--muted);border:2px dashed var(--line);border-radius:14px;background:var(--surface)}
+  .sepetPanel{position:fixed;inset:0;background:rgba(31,27,36,.45);z-index:20;display:flex;justify-content:flex-end}
+  .sepetKutu{background:var(--bg);width:min(520px,100%);height:100%;overflow:auto;padding:16px;display:grid;gap:12px;align-content:start;box-shadow:-8px 0 30px rgba(0,0,0,.25)}
+  .sepetKutu h2{margin:0;font:600 22px var(--serif)}
+  .satir{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px}
+  .satir img,.satir .k{width:48px;height:68px;object-fit:cover;border-radius:6px;background:var(--plum-soft)}
+  .grup{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--plum);font-weight:800;margin-top:6px}
+  label.field{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:700}
+  label.field>input,label.field>select,label.field>textarea{width:100%;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:9px 10px;font-size:15px;color:var(--fg);font-weight:500}
+  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px} .wide{grid-column:1/-1}
+  .toplam{display:flex;justify-content:space-between;font-weight:800;font-size:18px}
+  .not{font-size:13px;color:var(--muted)} .hata{color:var(--bad);font-size:13px} .ok{color:var(--ok);font-weight:700}
+  footer{max-width:1100px;margin:30px auto 0;padding:0 16px;color:var(--muted);font-size:13px;display:flex;gap:14px;flex-wrap:wrap} footer a{color:var(--accent-2)}
+  .sat{background:linear-gradient(120deg,var(--amber-soft),var(--accent-soft));border-radius:14px;padding:14px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px}
+  .sat b{font:600 17px var(--serif)}
+</style>
+</head>
+<body>
+<header>
+  <div class="ust">
+    <a class="marka" href="vitrin.html"><i></i>OkurPazarı</a>
+    <form class="ara" id="araForm"><input id="q" placeholder="Kitap, yazar ya da ISBN ara" autocomplete="off"><button type="submit">Ara</button></form>
+    <a class="ustbtn" href="sat.html">Kitaplarını sat</a>
+    <a class="ustbtn" href="index.html">Kitapçı girişi</a>
+    <button class="ustbtn sepet" id="sepetAc" type="button">🛒 Sepet <span id="sepetSay">0</span></button>
+  </div>
+</header>
+<main>
+  <div class="sat"><div><b>Kitaplığını boşaltmak mı istiyorsun?</b><div class="not">Kitaplarını toplu alıyoruz: listeyi gönder, teklifimizi WhatsApp'tan ilet elim.</div></div><a class="btn primary" href="sat.html">Teklif al</a></div>
+  <div class="filtre">
+    <select id="fSehir"><option value="">Tüm şehirler</option></select>
+    <select id="fDurum"><option value="">Her durum</option><option>Yeni</option><option>Çok iyi</option><option>İyi</option><option>Orta</option><option>Yıpranmış</option></select>
+    <select id="fSira"><option value="yeni">En yeni</option><option value="ucuz">Fiyat: önce ucuz</option><option value="pahali">Fiyat: önce pahalı</option></select>
+    <span class="sayi" id="sayi"></span>
+  </div>
+  <div class="izgara" id="izgara"></div>
+  <div class="bos" id="bos" hidden>Aradığın kitap bulunamadı. Başka bir ad dene ya da <a href="sat.html">istek bırak</a>.</div>
+  <div style="text-align:center;margin-top:14px"><button class="btn" id="dahaFazla" type="button" hidden>Daha fazla göster</button></div>
+</main>
+<footer><span>OkurPazarı · kitapçıların ortak vitrini</span><a href="index.html">Kitapçı mısın? Kitaplarını yükle</a><a href="sat.html">Kitaplarını bize sat</a></footer>
+
+<div class="sepetPanel" id="sepetPanel" hidden>
+  <div class="sepetKutu">
+    <div style="display:flex;justify-content:space-between;align-items:center"><h2>Sepet</h2><button class="btn" id="sepetKapat" type="button">Kapat</button></div>
+    <div id="sepetIcerik"></div>
+    <div id="odemeAlan" hidden>
+      <div class="toplam"><span>Toplam</span><span id="sepetToplam">₺0</span></div>
+      <p class="not">Her kitapçı kendi paketini gönderir; birden fazla kitapçıdan aldıysan ayrı siparişler oluşur. Kargo ücreti kitapçıyla konuşulur.</p>
+      <div class="fields">
+        <label class="field wide">Ad Soyad<input id="oAd" autocomplete="name"></label>
+        <label class="field">Telefon (WhatsApp)<input id="oTel" inputmode="tel" autocomplete="tel"></label>
+        <label class="field">Ödeme<select id="oOdeme"><option value="havale">Havale / EFT (kitapçı IBAN gönderir)</option><option value="kapida">Kapıda ödeme</option><option value="whatsapp">WhatsApp'ta anlaşalım</option></select></label>
+        <label class="field wide">Teslimat adresi<textarea id="oAdres" rows="3" autocomplete="street-address"></textarea></label>
+        <label class="field wide">Not (isteğe bağlı)<input id="oNot"></label>
+      </div>
+      <button class="btn primary" id="siparisVer" type="button" style="width:100%;padding:14px;font-size:17px">Siparişi gönder</button>
+      <p class="hata" id="oHata"></p>
+    </div>
+    <div id="sonuc" hidden></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="bulut.js?v=1"></script>
+<script src="vitrin.js?v=1"></script>
+</body>
+</html>

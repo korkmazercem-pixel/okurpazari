@@ -39,6 +39,7 @@
   .card{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--plum);border-radius:12px;padding:12px 12px 12px 14px;display:grid;gap:10px;box-shadow:var(--shadow)}
   .card.k-sirt{border-left-color:var(--amber)} .card.k-kapak{border-left-color:var(--accent)} .card.k-barkod,.card.k-elle,.card.k-arama{border-left-color:var(--plum)}
   .title{font:600 17px/1.25 var(--serif)} .meta{color:var(--muted);font-size:13px}
+  .rozet{display:inline-block;min-width:18px;padding:1px 6px;border-radius:999px;background:#fff;color:var(--accent-2);font-size:11px;margin-left:4px}
   .chip{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent-2)}
   .chip.sirt{background:var(--amber-soft);color:var(--amber)} .chip.kapak{background:var(--accent-soft);color:var(--accent-2)} .chip.barkod{background:var(--plum-soft);color:var(--plum)}
   .chip.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)} .chip.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)} .chip.bad{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
@@ -58,6 +59,7 @@
   <nav role="tablist">
     <button role="tab" id="tab-tara" aria-selected="true" aria-controls="p-tara">Tara</button>
     <button role="tab" id="tab-kitaplar" aria-selected="false" aria-controls="p-kitaplar">Kitaplarım</button>
+    <button role="tab" id="tab-siparis" aria-selected="false" aria-controls="p-siparis">Siparişler <span class="rozet" id="siparisRozet" hidden>0</span></button>
     <button role="tab" id="tab-ayarlar" aria-selected="false" aria-controls="p-ayarlar">Ayarlar</button>
   </nav>
 </header>
@@ -117,13 +119,45 @@
     <div class="list" id="liste"><div class="empty">Henüz kitap yok. Tara sekmesinden rafını okut.</div></div>
   </section>
 
+  <section id="p-siparis" role="tabpanel" hidden>
+    <div class="row" style="justify-content:space-between"><h2>Siparişler</h2><button class="btn" id="siparisYenile" type="button">Yenile</button></div>
+    <p class="hint" id="siparisHint">Müşteriler vitrinden sipariş verince burada görünür. Giriş yapmış olman gerekir.</p>
+    <div class="list" id="siparisListe"><div class="empty">Henüz sipariş yok.</div></div>
+  </section>
+
   <section id="p-ayarlar" role="tabpanel" hidden>
+    <div class="band" id="hesapBand">
+      <h3>Hesap</h3>
+      <div id="hesapCikis" hidden>
+        <p class="hint" id="hesapBilgi"></p>
+        <p class="hint">Kitapların bulutta: telefon ve bilgisayarda aynı liste görünür, vitrine düşer.</p>
+        <div class="row"><button class="btn" id="cikis" type="button">Çıkış yap</button><span class="status" id="hesapDurum"></span></div>
+      </div>
+      <div id="hesapGiris">
+        <p class="hint">Kitapların vitrinde satılsın ve her cihazda aynı liste görünsün diye bir hesap aç. E-posta onayı yok; hemen başlarsın.</p>
+        <div class="fields">
+          <label class="field">E-posta<input id="hEposta" type="email" autocomplete="email" inputmode="email"></label>
+          <label class="field">Şifre (en az 6)<input id="hSifre" type="password" autocomplete="current-password"></label>
+        </div>
+        <div class="fields" id="kayitAlan" hidden>
+          <label class="field wide">Dükkân adı<input id="hDukkan" placeholder="örn. Sahaf Yıldız"></label>
+          <label class="field">Şehir / ilçe<input id="hSehir"></label>
+          <label class="field">Telefon (WhatsApp)<input id="hTel" inputmode="tel"></label>
+        </div>
+        <div class="row">
+          <button class="btn primary" id="girisYap" type="button">Giriş yap</button>
+          <button class="btn" id="kayitOl" type="button">Yeni kitapçı hesabı aç</button>
+          <span class="status" id="girisDurum"></span>
+        </div>
+      </div>
+    </div>
     <div class="band">
       <h3>Dükkânım</h3>
       <div class="fields">
         <label class="field wide">Dükkân adı<input id="dAd" placeholder="örn. Sahaf Yıldız"></label>
         <label class="field">Şehir / ilçe<input id="dSehir"></label>
-        <label class="field">Telefon<input id="dTel" inputmode="tel"></label>
+        <label class="field">Telefon (WhatsApp)<input id="dTel" inputmode="tel"></label>
+        <label class="field wide">Adres (müşteriye görünmez; kargo/iade için)<input id="dAdres"></label>
       </div>
       <div class="row"><button class="btn primary" id="dKaydet" type="button">Kaydet</button><span class="status" id="dDurum"></span></div>
     </div>
@@ -169,15 +203,36 @@
       <p class="hint">Siteyi uygulama gibi simgeyle açmak için: <b>Telefon</b> — tarayıcı menüsü (⋮ veya ≡) → <b>Ana ekrana ekle</b> / <b>Yükle</b>. <b>Bilgisayar</b> — Edge/Chrome adres çubuğunun sağındaki <b>yükle</b> simgesi ya da menü → Uygulamalar → <b>Bu siteyi uygulama olarak yükle</b>. Yüklü uygulama her açılışta güncel sürümü alır; yeniden yüklemek gerekmez.</p>
       <button class="btn primary" id="yukle" type="button" hidden>📲 Uygulama olarak yükle</button>
     </div>
+    <div class="band" id="yonetimBand" hidden>
+      <h3>Yönetim (yalnızca platform sahibi)</h3>
+      <div class="fields">
+        <label class="field">Satış komisyonu %<input id="yKom" inputmode="decimal"></label>
+        <label class="field">Aylık abonelik ₺<input id="yAbo" inputmode="decimal"></label>
+        <label class="field">Platform WhatsApp<input id="yWa" inputmode="tel" placeholder="905xxxxxxxxx"></label>
+      </div>
+      <h3>Toplu alım kuralı (okuyuculardan alırken)</h3>
+      <div class="fields">
+        <label class="field">Temel<select id="yaKaynak"><option value="min">İnternetteki en ucuz</option><option value="orta">Ortalama</option><option value="etiket">Etiket fiyatı</option></select></label>
+        <label class="field">Bunun % kaçı (Yeni)<input id="yaYeni" inputmode="numeric"></label>
+        <label class="field">Çok iyi %<input id="yaCokiyi" inputmode="numeric"></label>
+        <label class="field">İyi %<input id="yaIyi" inputmode="numeric"></label>
+        <label class="field">Orta %<input id="yaOrta" inputmode="numeric"></label>
+        <label class="field">Yıpranmış %<input id="yaYipranmis" inputmode="numeric"></label>
+      </div>
+      <div class="row"><button class="btn primary" id="yKaydet" type="button">Kaydet</button><span class="status" id="yDurum"></span></div>
+      <h3>Toplu alım talepleri</h3>
+      <div class="list" id="teklifListe"><div class="empty">Talep yok.</div></div>
+    </div>
     <div class="band">
       <h3>Platform</h3>
-      <dl class="kv"><dt>Satış komisyonu</dt><dd id="pKom">%0</dd><dt>Aylık abonelik</dt><dd id="pAbo">0 ₺</dd><dt>Sürüm</dt><dd>0.2 — raf tarama + otomatik fiyat (yerel kayıt)</dd></dl>
-      <p class="hint">Kayıtlar şimdilik bu telefonda tutulur; hesap ve ortak veritabanı sonraki sürümde.</p>
+      <dl class="kv"><dt>Satış komisyonu</dt><dd id="pKom">%0</dd><dt>Aylık abonelik</dt><dd id="pAbo">0 ₺</dd><dt>Vitrin</dt><dd><a href="vitrin.html" id="vitrinLink">vitrin.html</a></dd><dt>Sürüm</dt><dd>0.3 — bulut hesabı, vitrin, sipariş</dd></dl>
     </div>
   </section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
-<script src="app.js?v=19"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="bulut.js?v=1"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

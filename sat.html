@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EE3F7A">
+<title>OkurPazarı — Kitaplarını sat</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+<style>
+  :root { --bg:#FBF8F4; --fg:#1F1B24; --muted:#6B6473; --line:#EAE3E6; --card:#FFFFFF; --g1:#FF8A3D; --g2:#EE3F7A; --g3:#8A4DFF; --accent-2:#B5306A; --plum:#7A45E6; --ok:#1F8A4C; --bad:#C62828; --shadow:0 1px 2px rgba(31,27,36,.05),0 8px 22px rgba(238,63,122,.08); --ui:"Manrope",system-ui,sans-serif; --serif:"Source Serif 4",Georgia,serif; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#17131C; --fg:#F1ECF3; --muted:#A9A1B1; --line:#2E2735; --card:#241D2C; --accent-2:#FF8DB6; --plum:#B899FF; --ok:#6BCB86; --bad:#F08A84; color-scheme: dark; } }
+  *{box-sizing:border-box} [hidden]{display:none!important}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--ui)} button,input,select,textarea{font:inherit;color:inherit}
+  header{background:linear-gradient(120deg,var(--g1),var(--g2) 55%,var(--g3));color:#fff;padding:12px 16px} .ust{max-width:760px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .marka{font:700 24px var(--serif);color:#fff;text-decoration:none} .ustbtn{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:10px;padding:8px 12px;font-weight:700;text-decoration:none}
+  main{max-width:760px;margin:0 auto;padding:16px 16px 60px;display:grid;gap:14px}
+  h1{margin:0;font:600 24px var(--serif)} h3{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--plum)}
+  .band{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:10px;box-shadow:var(--shadow)}
+  .hint{font-size:13px;color:var(--muted)} .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px} .wide{grid-column:1/-1}
+  label.field{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:700} label.field>input,label.field>select,label.field>textarea{width:100%;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:9px 10px;font-size:15px;color:var(--fg);font-weight:500}
+  .btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:9px 14px;font-weight:700;cursor:pointer} .btn.primary{background:linear-gradient(120deg,var(--g1),var(--g2) 60%,var(--g3));color:#fff;border-color:transparent}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center} .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .kitap{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--bg)} .kitap select{border:1px solid var(--line);border-radius:8px;padding:6px;background:var(--card)}
+  .ok{color:var(--ok);font-weight:700} .hata{color:var(--bad)}
+</style>
+</head>
+<body>
+<header><div class="ust"><a class="marka" href="vitrin.html">OkurPazarı</a><a class="ustbtn" href="vitrin.html">Vitrine dön</a></div></header>
+<main>
+  <h1>Kitaplarını bize sat</h1>
+  <p class="hint">Okumayacağın kitapları toplu alıyoruz. Listeyi gönder; aynı gün içinde WhatsApp'tan toplam teklif iletelim. Kabul edersen İstanbul içinde gelip alırız, dışında kargo ile.</p>
+  <div class="band">
+    <h3>Kitaplar</h3>
+    <div class="row">
+      <label class="btn" for="barkod">📷 Barkod okut (fotoğraf)<input class="sr" type="file" id="barkod" accept="image/*" capture="environment" multiple></label>
+      <label class="field" style="flex:1 1 200px">Ya da ISBN / kitap adı yaz<input id="elle" placeholder="9789750512345 ya da Tutunamayanlar"></label>
+      <button class="btn" id="ekle" type="button">Ekle</button>
+    </div>
+    <p class="hint" id="durum">Kitapların arkasındaki barkodun fotoğrafını çek (bir fotoğrafta birkaç barkod olabilir) ya da adını yaz.</p>
+    <div id="liste" style="display:grid;gap:6px"></div>
+    <label class="field wide">Listeye eklemek istediklerin (her satıra bir kitap; isteğe bağlı)<textarea id="serbest" rows="4" placeholder="Suç ve Ceza — Dostoyevski (İş Bankası)&#10;Kürk Mantolu Madonna — Sabahattin Ali"></textarea></label>
+  </div>
+  <div class="band">
+    <h3>İletişim</h3>
+    <div class="fields">
+      <label class="field">Ad Soyad<input id="ad" autocomplete="name"></label>
+      <label class="field">Telefon (WhatsApp)<input id="tel" inputmode="tel" autocomplete="tel"></label>
+      <label class="field">Şehir / ilçe<input id="sehir"></label>
+      <label class="field wide">Not (kitapların genel durumu, kaç kitap, ne zaman uygun)<input id="not"></label>
+    </div>
+    <button class="btn primary" id="gonder" type="button" style="padding:14px;font-size:17px">Teklif iste</button>
+    <p id="sonuc"></p>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="bulut.js?v=1"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id); const { sb, esc, hataMetni, DURUMLAR } = window.OP;
+  const kitaplar = []; const isbnDuzelt = (raw) => { const d = String(raw || "").replace(/[^0-9Xx]/g, "").toUpperCase(); return /^97[89]\d{10}$/.test(d) || /^\d{9}[\dX]$/.test(d) ? d : ""; };
+  async function googleBooks(q) { const r = await fetch("https://www.googleapis.com/books/v1/volumes?maxResults=1&printType=books&q=" + encodeURIComponent(q)); const j = await r.json(); const v = (j.items || [])[0]?.volumeInfo; return v ? { baslik: v.title, yazar: (v.authors || []).join(", "), yayinevi: v.publisher || "", isbn: ((v.industryIdentifiers || []).find((x) => x.type === "ISBN_13") || {}).identifier || "" } : null; }
+  function goster() { $("liste").innerHTML = kitaplar.map((k, i) => `<div class="kitap"><div><b>${esc(k.baslik || k.isbn)}</b> <span class="hint">${esc(k.yazar || "")}${k.yayinevi ? " · " + esc(k.yayinevi) : ""}</span></div><select data-i="${i}">${DURUMLAR.map((d) => `<option${d === k.durum ? " selected" : ""}>${d}</option>`).join("")}</select><button class="btn" data-sil="${i}" type="button">Çıkar</button></div>`).join(""); }
+  $("liste").addEventListener("change", (e) => { const i = e.target.dataset.i; if (i != null) kitaplar[+i].durum = e.target.value; });
+  $("liste").addEventListener("click", (e) => { const b = e.target.closest("[data-sil]"); if (b) { kitaplar.splice(+b.dataset.sil, 1); goster(); } });
+  async function ekleIsbn(isbn, kaynak) { if (kitaplar.some((k) => k.isbn === isbn)) return; const k = { isbn, baslik: "", yazar: "", yayinevi: "", durum: "İyi", kaynak }; kitaplar.unshift(k); goster(); try { const b = await googleBooks("isbn:" + isbn); if (b) Object.assign(k, b, { isbn }); } catch (e) {} goster(); }
+  $("ekle").addEventListener("click", async () => { const t = $("elle").value.trim(); if (!t) return; const isbn = isbnDuzelt(t); if (isbn) await ekleIsbn(isbn, "elle"); else { const k = { isbn: "", baslik: t, yazar: "", durum: "İyi", kaynak: "elle" }; kitaplar.unshift(k); goster(); try { const b = await googleBooks(t); if (b && b.baslik) Object.assign(k, b); } catch (e) {} goster(); } $("elle").value = ""; });
+  $("elle").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("ekle").click(); } });
+  $("barkod").addEventListener("change", async (e) => {
+    const files = [...e.target.files]; e.target.value = ""; let n = 0; $("durum").textContent = "Barkodlar okunuyor…";
+    for (const f of files.slice(0, 10)) {
+      try {
+        const bmp = await createImageBitmap(f); const c = document.createElement("canvas"); const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height)); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s); c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+        let okundu = [];
+        if ("BarcodeDetector" in window) { try { okundu = (await new BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a"] }).detect(c)).map((r) => r.rawValue); } catch (err) {} }
+        if (!okundu.length && window.ZXing) { try { const hints = new Map(); hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8]); hints.set(ZXing.DecodeHintType.TRY_HARDER, true); const img = new Image(); img.src = c.toDataURL("image/jpeg", 0.9); await img.decode(); const r = await new ZXing.BrowserMultiFormatReader(hints).decodeFromImageElement(img); if (r) okundu = [r.getText()]; } catch (err) {} }
+        for (const raw of okundu) { const isbn = isbnDuzelt(raw); if (isbn) { await ekleIsbn(isbn, "barkod"); n++; } }
+      } catch (err) {}
+    }
+    $("durum").textContent = n ? n + " barkod okundu." : "Barkod bulunamadı; barkodu yakından ve net çek ya da adını yaz.";
+  });
+  $("gonder").addEventListener("click", async () => {
+    const ad = $("ad").value.trim(), tel = $("tel").value.trim(); const serbest = $("serbest").value.split("\n").map((x) => x.trim()).filter(Boolean).map((x) => ({ baslik: x, kaynak: "serbest", durum: "İyi" }));
+    const hepsi = kitaplar.concat(serbest);
+    if (!ad || !tel) { $("sonuc").innerHTML = '<span class="hata">Ad ve telefon gerekli.</span>'; return; }
+    if (!hepsi.length) { $("sonuc").innerHTML = '<span class="hata">En az bir kitap ekle.</span>'; return; }
+    $("gonder").disabled = true; $("sonuc").textContent = "Gönderiliyor…";
+    const { error } = await sb.from("teklifler").insert({ ad, telefon: tel, sehir: $("sehir").value.trim() || null, not_: $("not").value.trim() || null, kitaplar: hepsi });
+    $("gonder").disabled = false;
+    if (error) { $("sonuc").innerHTML = '<span class="hata">Gönderilemedi: ' + esc(hataMetni(error)) + "</span>"; return; }
+    const a = await window.OP.platformAyar(); const wa = a && a.whatsapp ? String(a.whatsapp).replace(/\D/g, "") : "";
+    $("sonuc").innerHTML = '<span class="ok">Talebin alındı.</span> ' + hepsi.length + ' kitap için teklifi WhatsApp\'tan ileteceğiz.' + (wa ? ' Hemen yazmak istersen: <a href="https://wa.me/' + wa + '?text=' + encodeURIComponent("Merhaba, OkurPazarı'na " + hepsi.length + " kitaplık teklif talebi gönderdim (" + ad + ").") + '">WhatsApp</a>' : "");
+    kitaplar.length = 0; goster(); $("serbest").value = "";
+  });
+})();
+</script>
+</body>
+</html>

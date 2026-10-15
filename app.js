@@ -647,7 +647,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     if (eksik >= 0) { durum("Kayıt " + (eksik + 1) + ": kitap adı boş; yaz ya da Çıkar.", true); return; }
     const simdi = new Date().toISOString(); let fiyatsiz = 0;
     for (const k of st.bulunan) { if (num(k.fiyat) == null) fiyatsiz++; st.kitaplar.unshift({ ...k, baslik: String(k.baslik).trim(), fiyat: num(k.fiyat), adet: Math.max(1, Math.round(num(k.adet) ?? 1)), baski: num(k.baski), yil: num(k.yil), satis: "satista", eklenme: simdi, bekliyor: undefined }); }
-    LS.set("op_kitaplar", st.kitaplar);
+    kitaplariSakla();
     const n = st.bulunan.length; st.bulunan = []; bulunanGoster(); kitaplarGoster();
     durum(n + " kitap kaydedildi (Kitaplarım)." + (fiyatsiz ? " " + fiyatsiz + " tanesinin fiyatı yok; Kitaplarım'dan gir, fiyatsız kitap vitrine çıkmaz." : ""));
   });
@@ -676,14 +676,14 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     const f = e.target.dataset.k; const card = e.target.closest("[data-id]"); if (!f || !card) return;
     const k = st.kitaplar.find((x) => x.id === card.dataset.id); if (!k) return;
     if (f === "fiyat") k.fiyat = num(e.target.value); else if (f === "adet") k.adet = Math.max(1, Math.round(num(e.target.value) ?? 1)); else k[f] = e.target.value;
-    LS.set("op_kitaplar", st.kitaplar); kitaplarGoster();
+    kitaplariSakla(); kitaplarGoster();
   });
   $("liste").addEventListener("click", (e) => {
     const b = e.target.closest("[data-act]"); if (!b) return; const id = b.closest("[data-id]").dataset.id; const k = st.kitaplar.find((x) => x.id === id); if (!k) return;
     if (b.dataset.act === "satildi") k.satis = "satildi";
     if (b.dataset.act === "geri") k.satis = "satista";
-    if (b.dataset.act === "sil") { if (b.dataset.onay !== "1") { b.dataset.onay = "1"; b.textContent = "Emin misin? Sil"; return; } st.kitaplar = st.kitaplar.filter((x) => x.id !== id); }
-    LS.set("op_kitaplar", st.kitaplar); kitaplarGoster();
+    if (b.dataset.act === "sil") { if (b.dataset.onay !== "1") { b.dataset.onay = "1"; b.textContent = "Emin misin? Sil"; return; } st.kitaplar = st.kitaplar.filter((x) => x.id !== id); bulutSil(id); }
+    kitaplariSakla(); kitaplarGoster();
   });
   // toplu fiyat (zam / indirim), geri alınabilir
   $("tUygula").addEventListener("click", () => {
@@ -693,13 +693,13 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     if (!hedef.length) { $("tDurum").textContent = "Fiyatı olan kitap yok."; return; }
     st.sonToplu = hedef.map((k) => [k.id, k.fiyat]);
     for (const k of hedef) k.fiyat = yuvarla(num(k.fiyat) * (1 + yon * y / 100), st.fiyat.yuvarla);
-    LS.set("op_kitaplar", st.kitaplar); kitaplarGoster();
+    kitaplariSakla(); kitaplarGoster();
     $("tDurum").textContent = hedef.length + " kitabın fiyatı %" + y + (yon > 0 ? " yükseltildi." : " düşürüldü.") + " Yanlışsa Geri al."; $("tGeriAl").hidden = false;
   });
   $("tGeriAl").addEventListener("click", () => {
     if (!st.sonToplu) return;
     for (const [id, f] of st.sonToplu) { const k = st.kitaplar.find((x) => x.id === id); if (k) k.fiyat = f; }
-    st.sonToplu = null; LS.set("op_kitaplar", st.kitaplar); kitaplarGoster(); $("tGeriAl").hidden = true; $("tDurum").textContent = "Fiyatlar geri alındı.";
+    st.sonToplu = null; kitaplariSakla(); kitaplarGoster(); $("tGeriAl").hidden = true; $("tDurum").textContent = "Fiyatlar geri alındı.";
   });
 
   $("disaAktar").addEventListener("click", async () => {
@@ -711,8 +711,12 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   });
 
   // ---------- ayarlar ----------
-  $("dAd").value = st.dukkan.ad || ""; $("dSehir").value = st.dukkan.sehir || ""; $("dTel").value = st.dukkan.telefon || "";
-  $("dKaydet").addEventListener("click", () => { st.dukkan = { ad: $("dAd").value.trim(), sehir: $("dSehir").value.trim(), telefon: $("dTel").value.trim() }; LS.set("op_dukkan", st.dukkan); $("dDurum").textContent = "Kaydedildi."; $("kimlik").textContent = (st.dukkan.ad || "kitapçı") + " · raf tarama"; });
+  $("dAd").value = st.dukkan.ad || ""; $("dSehir").value = st.dukkan.sehir || ""; $("dTel").value = st.dukkan.telefon || ""; $("dAdres").value = st.dukkan.adres || "";
+  $("dKaydet").addEventListener("click", async () => {
+    st.dukkan = { ad: $("dAd").value.trim(), sehir: $("dSehir").value.trim(), telefon: $("dTel").value.trim(), adres: $("dAdres").value.trim() }; LS.set("op_dukkan", st.dukkan);
+    $("kimlik").textContent = (st.dukkan.ad || "kitapçı") + " · raf tarama"; $("dDurum").textContent = "Kaydedildi.";
+    if (st.kullanici && OP.sb) { const { error } = await OP.sb.from("profiller").update({ dukkan: st.dukkan.ad, sehir: st.dukkan.sehir, telefon: st.dukkan.telefon, adres: st.dukkan.adres }).eq("id", st.kullanici.id); $("dDurum").textContent = error ? "Yerel kaydedildi; buluta yazılamadı: " + OP.hataMetni(error) : "Kaydedildi (bulut dahil)."; }
+  });
   if (st.dukkan.ad) $("kimlik").textContent = st.dukkan.ad + " · raf tarama";
   if (!st.ai.secildi && st.ai.model !== "gemini-3.5-flash-lite") { st.ai.model = "gemini-3.5-flash-lite"; LS.set("op_ai", st.ai); } // kullanıcı seçmediyse günlük hakkı bol model
   $("aiKey").value = st.ai.key || ""; $("aiModel").value = MODELLER.includes(st.ai.model) ? st.ai.model : "gemini-3.5-flash-lite";
@@ -729,6 +733,122 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     try { await geminiAra("Yalnızca şu JSON'u döndür: [{\"site\":\"deneme\",\"fiyat\":1}]"); st.aramaKapali = false; $("aiDurum").textContent = okuma + " Fiyat arama çalışıyor."; }
     catch (e) { st.aramaKapali = aramaKapali(e); $("aiDurum").textContent = okuma + (st.aramaKapali ? " Fiyat arama bu Google paketinde kapalı: AI Studio'da 'Set up billing' açılınca çalışır (ayda 5.000 arama bedava)." : " Fiyat arama hatası: " + (e.message || e.code)); }
   });
+
+  // ---------- bulut: hesap, eşitleme, siparişler, yönetim ----------
+  const OPB = window.OP || {}; const sb = OPB.sb || null;
+  st.kullanici = null; st.profil = null;
+  function kitaplariSakla() { LS.set("op_kitaplar", st.kitaplar); bulutYazPlanla(); }
+  const satirYap = (k) => ({ id: k.id, satici: st.kullanici.id, baslik: String(k.baslik || "").trim() || "(adsız)", yazar: k.yazar || null, yayinevi: k.yayinevi || null, baski: num(k.baski), yil: num(k.yil), isbn: k.isbn || null, sayfa: num(k.sayfa), kapak: k.kapak || null,
+    durum: k.durum || "İyi", fiyat: num(k.fiyat), adet: Math.max(0, Math.round(num(k.adet) ?? 1)), satis: k.satis || "satista", kaynak: k.kaynak || null, piyasa: k.piyasa && !k.piyasa.bekliyor ? k.piyasa : null, eklenme: k.eklenme || new Date().toISOString() });
+  const kayitYap = (r) => ({ id: r.id, baslik: r.baslik, yazar: r.yazar || "", yayinevi: r.yayinevi || "", baski: r.baski ?? "", yil: r.yil ?? "", isbn: r.isbn || "", sayfa: r.sayfa || "", kapak: r.kapak || "", durum: r.durum || "İyi", fiyat: r.fiyat, adet: r.adet ?? 1, satis: r.satis || "satista", kaynak: r.kaynak || "", piyasa: r.piyasa || null, eklenme: r.eklenme, bilgi: true, guven: 1 });
+  let bulutZaman = null;
+  function bulutYazPlanla() { if (!sb || !st.kullanici) return; clearTimeout(bulutZaman); bulutZaman = setTimeout(bulutYaz, 800); }
+  async function bulutYaz() {
+    if (!sb || !st.kullanici) return;
+    try {
+      const satirlar = st.kitaplar.map(satirYap);
+      for (let i = 0; i < satirlar.length; i += 200) { const { error } = await sb.from("kitaplar").upsert(satirlar.slice(i, i + 200), { onConflict: "id" }); if (error) throw error; }
+      LS.set("op_bulut_bekleyen", false); bulutDurum("Bulut: eşitlendi " + new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }));
+    } catch (e) { LS.set("op_bulut_bekleyen", true); bulutDurum("Bulut: yazılamadı (" + OPB.hataMetni(e) + "); tekrar denenecek", true); setTimeout(bulutYaz, 15000); }
+  }
+  async function bulutSil(id) { if (!sb || !st.kullanici) return; try { await sb.from("kitaplar").delete().eq("id", id); } catch (e) {} }
+  function bulutDurum(m, err) { const h = $("hesapDurum"); if (h) { h.textContent = m; h.classList.toggle("err", !!err); } }
+  async function bulutCek() {
+    if (!sb || !st.kullanici) return;
+    const { data, error } = await sb.from("kitaplar").select("*").eq("satici", st.kullanici.id).order("eklenme", { ascending: false });
+    if (error) { bulutDurum("Bulut okunamadı: " + OPB.hataMetni(error), true); return; }
+    const bulut = (data || []).map(kayitYap); const bulutId = new Set(bulut.map((k) => k.id));
+    const yerelYeni = st.kitaplar.filter((k) => !bulutId.has(k.id)); // bu cihazda hesaptan önce kaydedilenler: buluta taşınır
+    st.kitaplar = [...yerelYeni, ...bulut]; LS.set("op_kitaplar", st.kitaplar); kitaplarGoster();
+    if (yerelYeni.length) bulutYaz(); else bulutDurum("Bulut: " + bulut.length + " kitap yüklendi");
+  }
+  async function hesapGoster() {
+    const girisli = !!st.kullanici;
+    $("hesapCikis").hidden = !girisli; $("hesapGiris").hidden = girisli;
+    if (!girisli) { $("yonetimBand").hidden = true; return; }
+    const p = st.profil || {};
+    $("hesapBilgi").textContent = (p.dukkan ? p.dukkan + " · " : "") + (st.kullanici.email || "") + (p.rol === "admin" ? " · yönetici" : "");
+    if (p.dukkan && !st.dukkan.ad) { st.dukkan = { ad: p.dukkan, sehir: p.sehir || "", telefon: p.telefon || "", adres: p.adres || "" }; LS.set("op_dukkan", st.dukkan); $("dAd").value = st.dukkan.ad; $("dSehir").value = st.dukkan.sehir; $("dTel").value = st.dukkan.telefon; $("dAdres").value = st.dukkan.adres; $("kimlik").textContent = st.dukkan.ad + " · raf tarama"; }
+    $("yonetimBand").hidden = p.rol !== "admin";
+    if (p.rol === "admin") yonetimYukle();
+  }
+  async function oturumBaslat() {
+    if (!sb) { $("girisDurum").textContent = "Bulut kütüphanesi yüklenemedi (internet?)."; return; }
+    const s = await OPB.oturum(); st.kullanici = s ? s.user : null; st.profil = s ? await OPB.profil() : null;
+    await hesapGoster();
+    if (st.kullanici) { await bulutCek(); siparisleriYukle(); }
+    sb.auth.onAuthStateChange(async (olay, oturum) => {
+      const yeni = oturum ? oturum.user : null; const degisti = (yeni && yeni.id) !== (st.kullanici && st.kullanici.id);
+      st.kullanici = yeni; if (degisti) { st.profil = yeni ? await OPB.profil() : null; await hesapGoster(); if (yeni) { await bulutCek(); siparisleriYukle(); } }
+    });
+  }
+  $("kayitOl").addEventListener("click", async () => {
+    if ($("kayitAlan").hidden) { $("kayitAlan").hidden = false; $("girisDurum").textContent = "Dükkân bilgilerini doldur, sonra tekrar bas."; $("hDukkan").value = st.dukkan.ad || ""; $("hSehir").value = st.dukkan.sehir || ""; $("hTel").value = st.dukkan.telefon || ""; return; }
+    const email = $("hEposta").value.trim(), sifre = $("hSifre").value, dukkan = $("hDukkan").value.trim();
+    if (!email || sifre.length < 6 || !dukkan) { $("girisDurum").textContent = "E-posta, en az 6 haneli şifre ve dükkân adı gerekli."; return; }
+    $("girisDurum").textContent = "Hesap açılıyor…";
+    const { data, error } = await sb.auth.signUp({ email, password: sifre, options: { data: { rol: "kitapci", dukkan, sehir: $("hSehir").value.trim(), telefon: $("hTel").value.trim() } } });
+    if (error) { $("girisDurum").textContent = OPB.hataMetni(error); return; }
+    if (!data.session) { $("girisDurum").textContent = "Hesap açıldı; e-posta doğrulaması bekleniyor (yönetici kapatınca gerekmez)."; return; }
+    st.dukkan = { ad: dukkan, sehir: $("hSehir").value.trim(), telefon: $("hTel").value.trim(), adres: "" }; LS.set("op_dukkan", st.dukkan);
+    $("girisDurum").textContent = "Hesap açıldı, giriş yapıldı.";
+  });
+  $("girisYap").addEventListener("click", async () => {
+    const email = $("hEposta").value.trim(), sifre = $("hSifre").value; if (!email || !sifre) { $("girisDurum").textContent = "E-posta ve şifre gir."; return; }
+    $("girisDurum").textContent = "Giriş yapılıyor…";
+    const { error } = await sb.auth.signInWithPassword({ email, password: sifre });
+    $("girisDurum").textContent = error ? OPB.hataMetni(error) : "Giriş yapıldı.";
+  });
+  $("cikis").addEventListener("click", async () => { await sb.auth.signOut(); st.kullanici = null; st.profil = null; hesapGoster(); $("girisDurum").textContent = "Çıkış yapıldı. Kitaplar bu cihazda durmaya devam eder."; });
+
+  // siparişler
+  const SIPARIS_DURUM = { yeni: ["Yeni", "warn"], onaylandi: ["Onaylandı", "ok"], kargoda: ["Kargoda", "ok"], teslim: ["Teslim edildi", ""], iptal: ["İptal", "bad"] };
+  const ODEME = { havale: "Havale / EFT", kapida: "Kapıda ödeme", whatsapp: "WhatsApp'ta anlaşma" };
+  async function siparisleriYukle() {
+    if (!sb || !st.kullanici) { $("siparisListe").innerHTML = '<div class="empty">Siparişleri görmek için Ayarlar\'dan giriş yap.</div>'; return; }
+    const { data, error } = await sb.from("siparisler").select("*").eq("satici", st.kullanici.id).order("olusturma", { ascending: false }).limit(200);
+    if (error) { $("siparisListe").innerHTML = '<div class="empty">Siparişler okunamadı: ' + esc(OPB.hataMetni(error)) + "</div>"; return; }
+    st.siparisler = data || []; const yeni = st.siparisler.filter((s) => s.durum === "yeni").length;
+    $("siparisRozet").hidden = !yeni; $("siparisRozet").textContent = yeni;
+    if (!st.siparisler.length) { $("siparisListe").innerHTML = '<div class="empty">Henüz sipariş yok.</div>'; return; }
+    $("siparisListe").innerHTML = st.siparisler.map((s) => {
+      const d = SIPARIS_DURUM[s.durum] || [s.durum, ""]; const tel = String(s.telefon || "").replace(/\D/g, ""); const wa = tel ? "https://wa.me/" + (tel.startsWith("0") ? "9" + tel : tel.startsWith("90") ? tel : "90" + tel) : "";
+      return `<div class="card k-barkod" data-sid="${esc(s.id)}">
+        <div class="row" style="justify-content:space-between"><div><span class="chip ${d[1]}">${esc(d[0])}</span> <span class="meta">${esc(new Date(s.olusturma).toLocaleString("tr-TR"))}</span></div><div class="price">${tl(num(s.toplam))}</div></div>
+        <div>${(s.kalemler || []).map((k) => `<div>${esc(k.adet)} × <b>${esc(k.baslik)}</b> <span class="meta">${esc(k.durum || "")} · ${tl(num(k.fiyat))}</span></div>`).join("")}</div>
+        <div class="meta"><b>${esc(s.ad)}</b> · ${esc(s.telefon)} ${wa ? `· <a href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ""}<br>${esc(s.adres)}${s.not_ ? "<br>Not: " + esc(s.not_) : ""}<br>Ödeme: ${esc(ODEME[s.odeme] || s.odeme)}${num(s.komisyon) ? " · platform komisyonu " + tl(num(s.komisyon)) : ""}</div>
+        <div class="row">${s.durum === "yeni" ? '<button class="btn primary" data-sd="onaylandi">Onayla</button>' : ""}${s.durum === "onaylandi" ? '<button class="btn primary" data-sd="kargoda">Kargoya verildi</button>' : ""}${s.durum === "kargoda" ? '<button class="btn primary" data-sd="teslim">Teslim edildi</button>' : ""}${s.durum !== "iptal" && s.durum !== "teslim" ? '<button class="btn danger" data-sd="iptal">İptal</button>' : ""}</div></div>`;
+    }).join("");
+  }
+  $("siparisListe").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-sd]"); if (!b) return; const id = b.closest("[data-sid]").dataset.sid;
+    const { error } = await sb.from("siparisler").update({ durum: b.dataset.sd }).eq("id", id);
+    if (error) { durum("Sipariş güncellenemedi: " + OPB.hataMetni(error), true); return; }
+    siparisleriYukle();
+  });
+  $("siparisYenile").addEventListener("click", siparisleriYukle);
+  $("tab-siparis").addEventListener("click", siparisleriYukle);
+
+  // yönetim (platform sahibi)
+  const YA_ID = { "Yeni": "yaYeni", "Çok iyi": "yaCokiyi", "İyi": "yaIyi", "Orta": "yaOrta", "Yıpranmış": "yaYipranmis" };
+  async function yonetimYukle() {
+    const a = await OPB.platformAyar(); if (!a) return;
+    $("yKom").value = a.komisyon_yuzde ?? 0; $("yAbo").value = a.abonelik_aylik ?? 0; $("yWa").value = a.whatsapp || "";
+    const k = a.alim_kurali || {}; $("yaKaynak").value = k.kaynak || "min"; for (const d of DURUMLAR) $(YA_ID[d]).value = (k.carpan || {})[d] ?? "";
+    $("pKom").textContent = "%" + (a.komisyon_yuzde ?? 0); $("pAbo").textContent = tl(num(a.abonelik_aylik) || 0);
+    const { data } = await sb.from("teklifler").select("*").order("olusturma", { ascending: false }).limit(100);
+    const t = data || [];
+    $("teklifListe").innerHTML = t.length ? t.map((x) => `<div class="card k-sirt"><div class="row" style="justify-content:space-between"><div><b>${esc(x.ad)}</b> · ${esc(x.telefon)} · ${esc(x.sehir || "")} <span class="chip warn">${esc(x.durum)}</span></div><div class="meta">${esc(new Date(x.olusturma).toLocaleString("tr-TR"))}</div></div>
+      <div class="meta">${(x.kitaplar || []).length} kitap${x.toplam_teklif != null ? " · teklif " + tl(num(x.toplam_teklif)) : ""}${x.not_ ? "<br>Not: " + esc(x.not_) : ""}</div>
+      <div class="meta">${(x.kitaplar || []).slice(0, 40).map((k) => esc(k.baslik || k.isbn || "?") + (k.yazar ? " — " + esc(k.yazar) : "")).join("<br>")}</div></div>`).join("") : '<div class="empty">Talep yok.</div>';
+  }
+  $("yKaydet").addEventListener("click", async () => {
+    const carpan = {}; for (const d of DURUMLAR) carpan[d] = num($(YA_ID[d]).value) ?? 0;
+    const { error } = await sb.from("platform_ayar").update({ komisyon_yuzde: num($("yKom").value) ?? 0, abonelik_aylik: num($("yAbo").value) ?? 0, whatsapp: $("yWa").value.trim() || null, alim_kurali: { kaynak: $("yaKaynak").value, carpan } }).eq("id", 1);
+    $("yDurum").textContent = error ? OPB.hataMetni(error) : "Kaydedildi."; if (!error) yonetimYukle();
+  });
+  OPB.platformAyar && OPB.platformAyar().then((a) => { if (a) { $("pKom").textContent = "%" + (a.komisyon_yuzde ?? 0); $("pAbo").textContent = tl(num(a.abonelik_aylik) || 0); } });
+  oturumBaslat();
 
   // fiyat kuralı
   const CARPAN_ID = { "Çok iyi": "fc_Cokiyi", "İyi": "fc_Iyi", "Orta": "fc_Orta", "Yıpranmış": "fc_Yipranmis" };
