@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F6E63">
+<title>OkurPazarı — Raf Tarama</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+<style>
+  :root { --bg:#FBFAF6; --fg:#1E2622; --muted:#5E6A64; --line:#DAD9D1; --surface:#F1F0EA; --card:#fff; --accent:#0F6E63; --accent-ink:#fff; --accent-soft:#DCEFEB; --price:#9A5E0C; --ok:#1F7A3A; --warn:#B4540A; --bad:#B3261E; --ui:"Manrope",system-ui,sans-serif; --serif:"Source Serif 4",Georgia,serif; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141B18; --fg:#E9E7E0; --muted:#A4ADA7; --line:#2F3A35; --surface:#1C2420; --card:#202A25; --accent:#5FC2B2; --accent-ink:#0E1F1B; --accent-soft:#1E3A35; --price:#E2A75A; --ok:#6BCB86; --warn:#F0A35C; --bad:#F08A84; color-scheme: dark; } }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--ui)}
+  button,input,select{font:inherit;color:inherit}
+  header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left))}
+  .brand{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .brand h1{margin:0;font:600 22px var(--serif)} .brand small{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+  nav{display:flex;gap:2px;margin-top:6px} nav button{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:10px 6px;color:var(--muted);font-weight:700;cursor:pointer}
+  nav button[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent)}
+  main{max-width:760px;margin:0 auto;padding:14px max(16px,env(safe-area-inset-right)) 60px max(16px,env(safe-area-inset-left))}
+  section{display:grid;gap:14px}
+  h2{margin:0;font:600 19px var(--serif)} h3{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .band{background:var(--surface);border-radius:10px;padding:14px;display:grid;gap:10px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center} .grow{flex:1 1 160px;min-width:0}
+  .btn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
+  .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)} .btn.big{width:100%;padding:16px;font-size:17px} .btn.danger{color:var(--bad)} .btn[disabled]{opacity:.5}
+  .cam{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:3/4;max-height:62vh}
+  .cam video{width:100%;height:100%;object-fit:cover;display:block}
+  .cam .frame{position:absolute;inset:12% 8%;border:2px solid rgba(255,255,255,.85);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.25);pointer-events:none}
+  .cam .toast{position:absolute;left:10px;right:10px;bottom:10px;background:rgba(0,0,0,.65);color:#fff;padding:8px 10px;border-radius:8px;font-size:13px}
+  .cam .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s} .cam .flash.on{opacity:.6;transition:none}
+  label.field{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
+  label.field>input,label.field>select{width:100%;border:1px solid var(--line);background:var(--card);border-radius:6px;padding:8px 10px;font-size:15px;color:var(--fg);font-weight:500}
+  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px} .wide{grid-column:1/-1}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:10px}
+  .title{font:600 17px/1.25 var(--serif)} .meta{color:var(--muted);font-size:13px}
+  .chip{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+  .chip.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)} .chip.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)} .chip.bad{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+  .price{color:var(--price);font-weight:800;font-variant-numeric:tabular-nums}
+  .status{font-size:13px;color:var(--muted);min-height:1.4em} .status.err{color:var(--bad)}
+  .list{display:grid;gap:10px} .empty{padding:24px 12px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:10px}
+  .book{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:start} .book img{width:56px;height:80px;object-fit:cover;border-radius:4px;background:var(--surface)}
+  .hint{font-size:13px;color:var(--muted)} .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px} .kv dt{color:var(--muted)} .kv dd{margin:0}
+  textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);padding:8px;font:13px ui-monospace,monospace}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>OkurPazarı</h1><small id="kimlik">kitapçı · raf tarama</small></div>
+  <nav role="tablist">
+    <button role="tab" id="tab-tara" aria-selected="true" aria-controls="p-tara">Tara</button>
+    <button role="tab" id="tab-kitaplar" aria-selected="false" aria-controls="p-kitaplar">Kitaplarım</button>
+    <button role="tab" id="tab-ayarlar" aria-selected="false" aria-controls="p-ayarlar">Ayarlar</button>
+  </nav>
+</header>
+<main>
+  <section id="p-tara" role="tabpanel">
+    <div class="band">
+      <h2>Kamerayı rafta gezdir</h2>
+      <p class="hint">Barkodlar anında okunur ve kitap bilgisi otomatik gelir. Barkodsuz kitap için kamerayı kapağa ya da sırta tut, <b>Kapak/sırt oku</b>'ya bas.</p>
+      <div class="cam" id="cam" hidden>
+        <video id="video" playsinline muted autoplay></video>
+        <div class="frame"></div><div class="flash" id="flash"></div>
+        <div class="toast" id="toast">Kamera açılıyor…</div>
+      </div>
+      <div class="row">
+        <button class="btn primary big" id="basla" type="button">📷 Kamerayı aç</button>
+      </div>
+      <div class="row" id="camKontrol" hidden>
+        <button class="btn primary grow" id="kapakOku" type="button">🧠 Kapak / sırt oku</button>
+        <button class="btn" id="fener" type="button">🔦</button>
+        <button class="btn" id="durdur" type="button">Kapat</button>
+      </div>
+      <div class="row">
+        <label class="btn" for="dosya">🖼 Fotoğraftan oku<input class="sr" type="file" id="dosya" accept="image/*" capture="environment" multiple></label>
+        <label class="field grow">ISBN veya kitap adı yaz<input id="elle" inputmode="text" placeholder="9789750512345 ya da Tutunamayanlar"></label>
+        <button class="btn" id="elleEkle" type="button">Ekle</button>
+      </div>
+      <p class="status" id="durum">Hazır.</p>
+    </div>
+    <div id="bulunanBand" hidden>
+      <div class="row" style="justify-content:space-between">
+        <h3>Bulunanlar (<span id="bulunanSay">0</span>)</h3>
+        <div class="row"><button class="btn" id="temizle" type="button">Boşalt</button><button class="btn primary" id="kaydet" type="button">Hepsini kaydet</button></div>
+      </div>
+      <div class="list" id="bulunan"></div>
+    </div>
+  </section>
+
+  <section id="p-kitaplar" role="tabpanel" hidden>
+    <div class="row" style="justify-content:space-between"><h2>Kitaplarım</h2><span class="muted hint" id="ozet"></span></div>
+    <div class="row">
+      <label class="field grow">Ara<input id="ara" placeholder="kitap, yazar, ISBN"></label>
+      <button class="btn" id="disaAktar" type="button">Dışa aktar</button>
+    </div>
+    <textarea id="aktarim" hidden readonly></textarea>
+    <div class="list" id="liste"><div class="empty">Henüz kitap yok. Tara sekmesinden rafını okut.</div></div>
+  </section>
+
+  <section id="p-ayarlar" role="tabpanel" hidden>
+    <div class="band">
+      <h3>Dükkânım</h3>
+      <div class="fields">
+        <label class="field wide">Dükkân adı<input id="dAd" placeholder="örn. Sahaf Yıldız"></label>
+        <label class="field">Şehir / ilçe<input id="dSehir"></label>
+        <label class="field">Telefon<input id="dTel" inputmode="tel"></label>
+      </div>
+      <div class="row"><button class="btn primary" id="dKaydet" type="button">Kaydet</button><span class="status" id="dDurum"></span></div>
+    </div>
+    <div class="band">
+      <h3>Kapak / sırt okuma (yapay zekâ)</h3>
+      <p class="hint" id="aiHint">Anahtar girilmemiş. Barkod okuma anahtarsız çalışır; kapak ve sırt okuma için bir Gemini API anahtarı gerekir.</p>
+      <div class="fields">
+        <label class="field wide">Gemini API anahtarı<input id="aiKey" type="password" autocomplete="off" placeholder="AIza…"></label>
+        <label class="field">Model<select id="aiModel"><option value="gemini-2.5-flash">Gemini 2.5 Flash (hızlı)</option><option value="gemini-2.5-pro">Gemini 2.5 Pro (yavaş, isabetli)</option></select></label>
+      </div>
+      <div class="row"><button class="btn primary" id="aiKaydet" type="button">Anahtarı kaydet</button><button class="btn" id="aiTest" type="button">Dene</button><span class="status" id="aiDurum"></span></div>
+    </div>
+    <div class="band">
+      <h3>Platform</h3>
+      <dl class="kv"><dt>Satış komisyonu</dt><dd id="pKom">%0</dd><dt>Aylık abonelik</dt><dd id="pAbo">0 ₺</dd><dt>Sürüm</dt><dd>0.1 — raf tarama (yerel kayıt)</dd></dl>
+      <p class="hint">Kayıtlar şimdilik bu telefonda tutulur; hesap ve ortak veritabanı sonraki sürümde.</p>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
