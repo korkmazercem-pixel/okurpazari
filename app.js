@@ -336,6 +336,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
         let kota = false;
         for (let deneme = 0; deneme < 2; deneme++) { // 429 dakikalık sınır: aynı modeli 2,5 sn sonra bir kez daha dene
           const body = JSON.parse(JSON.stringify(temel)); const da = hizli ? dusunmeAyari(model) : null; if (da) { body.generationConfig = body.generationConfig || {}; body.generationConfig.thinkingConfig = da; }
+          st.jsonYok = st.jsonYok || {}; const jsonModu = !!(body.generationConfig && body.generationConfig.responseMimeType); if (jsonModu && st.jsonYok[model]) delete body.generationConfig.responseMimeType; // bu model JSON modunu reddetmişti: metinden ayıklanır
           let r;
           try { r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
           catch (e) { son = { code: "baglanti", message: "İnternet bağlantısı yok ya da kesildi" }; kalici = false; break; }
@@ -346,7 +347,10 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
           }
           let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {}
           son = { code: "http_" + r.status, message: m };
-          if (r.status === 400 && da && /thinking|invalid argument|unknown name|not supported/i.test(m)) { st.dusunmeYok[model] = true; deneme--; continue; } // bu model düşünme ayarını kabul etmiyor: ayarsız tekrar
+          if (r.status === 400 && /thinking|invalid argument|unknown name|not supported|not valid|unsupported/i.test(m) && !/API key|api_key/i.test(m)) {
+            if (da) { st.dusunmeYok[model] = true; deneme--; continue; } // 1) düşünme ayarını çıkar, tekrar
+            if (jsonModu && !st.jsonYok[model]) { st.jsonYok[model] = true; deneme--; continue; } // 2) JSON modunu çıkar, tekrar (cevap metinden ayıklanır)
+          }
           if (r.status === 429 && !aramaKapali(son) && gunlukKota(m)) { st.biten[model] = bugun(); LS.set("op_biten", st.biten); kota = false; break; } // günlük hak bitti: bu model bugün atlanır, sıradakine geç
           kota = r.status === 429 && !aramaKapali(son);
           if (kota && deneme === 0) { kalici = false; await new Promise((res) => setTimeout(res, 2500)); continue; }
