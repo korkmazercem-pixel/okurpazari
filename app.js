@@ -337,13 +337,14 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   $("bulunan").addEventListener("click", (e) => { const b = e.target.closest("[data-sil]"); if (!b) return; st.bulunan.splice(+b.dataset.sil, 1); bulunanGoster(); });
   $("temizle").addEventListener("click", () => { st.bulunan = []; bulunanGoster(); durum("Liste boşaltıldı."); });
   $("kaydet").addEventListener("click", () => {
-    const eksik = st.bulunan.findIndex((k) => !String(k.baslik).trim() || num(k.fiyat) == null);
-    if (eksik >= 0) { durum("Kayıt " + (eksik + 1) + ": kitap adı ve fiyat zorunlu.", true); return; }
-    const simdi = new Date().toISOString();
-    for (const k of st.bulunan) st.kitaplar.unshift({ ...k, baslik: String(k.baslik).trim(), fiyat: num(k.fiyat), adet: Math.max(1, Math.round(num(k.adet) ?? 1)), baski: num(k.baski), yil: num(k.yil), satis: "satista", eklenme: simdi, bekliyor: undefined });
+    if (!st.bulunan.length) return;
+    const eksik = st.bulunan.findIndex((k) => !String(k.baslik).trim());
+    if (eksik >= 0) { durum("Kayıt " + (eksik + 1) + ": kitap adı boş; yaz ya da Çıkar.", true); return; }
+    const simdi = new Date().toISOString(); let fiyatsiz = 0;
+    for (const k of st.bulunan) { if (num(k.fiyat) == null) fiyatsiz++; st.kitaplar.unshift({ ...k, baslik: String(k.baslik).trim(), fiyat: num(k.fiyat), adet: Math.max(1, Math.round(num(k.adet) ?? 1)), baski: num(k.baski), yil: num(k.yil), satis: "satista", eklenme: simdi, bekliyor: undefined }); }
     LS.set("op_kitaplar", st.kitaplar);
     const n = st.bulunan.length; st.bulunan = []; bulunanGoster(); kitaplarGoster();
-    durum(n + " kitap kaydedildi (Kitaplarım).");
+    durum(n + " kitap kaydedildi (Kitaplarım)." + (fiyatsiz ? " " + fiyatsiz + " tanesinin fiyatı yok; Kitaplarım'dan gir, fiyatsız kitap vitrine çıkmaz." : ""));
   });
 
   // ---------- kitaplarım ----------
@@ -356,11 +357,22 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     host.innerHTML = l.map((k) => `<div class="card" data-id="${esc(k.id)}">
       <div class="book">${k.kapak ? `<img src="${esc(k.kapak)}" alt="">` : `<div style="width:56px;height:80px;border-radius:4px;background:var(--surface)"></div>`}
         <div style="min-width:0"><div class="title">${esc(k.baslik)}</div><div class="meta">${esc(k.yazar || "")}${k.yayinevi ? " · " + esc(k.yayinevi) : ""}${k.baski ? " · " + esc(k.baski) + ". baskı" : ""}${k.isbn ? " · " + esc(k.isbn) : ""}</div>
-          <div class="row" style="margin-top:4px">${k.satis === "satildi" ? '<span class="chip warn">satıldı</span>' : '<span class="chip ok">satışta</span>'}<span class="chip">${esc(k.durum)}</span></div></div>
+          <div class="row" style="margin-top:4px">${k.satis === "satildi" ? '<span class="chip warn">satıldı</span>' : (num(k.fiyat) == null ? '<span class="chip bad">fiyat yok</span>' : '<span class="chip ok">satışta</span>')}<span class="chip">${esc(k.durum)}</span></div></div>
         <div style="text-align:right"><div class="price">${tl(num(k.fiyat))}</div><div class="meta">${esc(k.adet || 1)} adet</div></div></div>
+      <div class="fields">
+        <label class="field">Fiyat (₺)<input data-k="fiyat" inputmode="decimal" value="${esc(k.fiyat ?? "")}" placeholder="yaz"></label>
+        <label class="field">Durum<select data-k="durum">${DURUMLAR.map((d) => `<option${d === k.durum ? " selected" : ""}>${d}</option>`).join("")}</select></label>
+        <label class="field">Adet<input data-k="adet" inputmode="numeric" value="${esc(k.adet ?? 1)}"></label>
+      </div>
       <div class="row">${k.satis === "satildi" ? '<button class="btn" data-act="geri">Tekrar satışa koy</button>' : '<button class="btn" data-act="satildi">Satıldı</button>'}<button class="btn danger" data-act="sil">Sil</button></div></div>`).join("");
   }
   $("ara").addEventListener("input", kitaplarGoster);
+  $("liste").addEventListener("change", (e) => {
+    const f = e.target.dataset.k; const card = e.target.closest("[data-id]"); if (!f || !card) return;
+    const k = st.kitaplar.find((x) => x.id === card.dataset.id); if (!k) return;
+    if (f === "fiyat") k.fiyat = num(e.target.value); else if (f === "adet") k.adet = Math.max(1, Math.round(num(e.target.value) ?? 1)); else k[f] = e.target.value;
+    LS.set("op_kitaplar", st.kitaplar); kitaplarGoster();
+  });
   $("liste").addEventListener("click", (e) => {
     const b = e.target.closest("[data-act]"); if (!b) return; const id = b.closest("[data-id]").dataset.id; const k = st.kitaplar.find((x) => x.id === id); if (!k) return;
     if (b.dataset.act === "satildi") k.satis = "satildi";
