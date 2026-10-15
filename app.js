@@ -42,7 +42,7 @@
   const tabs = [...document.querySelectorAll('nav [role="tab"]')];
   function goTab(id) { for (const t of tabs) { const on = t.id === id; t.setAttribute("aria-selected", on); $(t.getAttribute("aria-controls")).hidden = !on; } LS.set("op_tab", id); }
   tabs.forEach((t) => t.addEventListener("click", () => goTab(t.id)));
-  { const s = LS.get("op_tab", null); if (s && tabs.find((t) => t.id === s)) goTab(s); }
+  goTab("tab-tara"); // her açılış Tara'dan başlar
 
   // ---------- kitap bilgisi (anahtarsız) ----------
   async function googleBooks(q) {
