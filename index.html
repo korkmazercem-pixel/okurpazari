@@ -59,7 +59,7 @@
   <section id="p-tara" role="tabpanel">
     <div class="band">
       <h2>Kamerayı rafta gezdir</h2>
-      <p class="hint">Barkodlar anında okunur ve kitap bilgisi otomatik gelir. Barkodsuz kitap için kamerayı kapağa ya da sırta tut, <b>Kapak/sırt oku</b>'ya bas.</p>
+      <p class="hint">Barkodlar anında okunur. <b>Sürekli oku</b> açıkken kamerayı rafta yavaşça kaydır: sırtlar ve kapaklar kendiliğinden okunur, aynı kitap iki kez yazılmaz. Tek kitap için <b>Tek kare</b>.</p>
       <div class="cam" id="cam" hidden>
         <video id="video" playsinline muted autoplay></video>
         <div class="frame"></div><div class="flash" id="flash"></div>
@@ -69,7 +69,8 @@
         <button class="btn primary big" id="basla" type="button">📷 Kamerayı aç</button>
       </div>
       <div class="row" id="camKontrol" hidden>
-        <button class="btn primary grow" id="kapakOku" type="button">🧠 Kapak / sırt oku</button>
+        <button class="btn primary grow" id="surekli" type="button">🎥 Sürekli oku: KAPALI</button>
+        <button class="btn" id="kapakOku" type="button">📸 Tek kare</button>
         <button class="btn" id="fener" type="button">🔦</button>
         <button class="btn" id="durdur" type="button">Kapat</button>
       </div>
@@ -166,6 +167,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

@@ -244,15 +244,16 @@
     try { st.zx && st.zx.reset(); } catch (e) {} st.zx = null;
     try { st.stream && st.stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
     st.stream = null; st.track = null;
+    if (typeof oto !== "undefined" && oto.acik) surekliAyarla(false);
     $("cam").hidden = true; $("camKontrol").hidden = true; $("basla").hidden = false;
   }
   $("basla").addEventListener("click", kameraAc);
   $("durdur").addEventListener("click", () => { kameraKapat(); durum("Kamera kapatıldı."); });
   $("fener").addEventListener("click", async () => { if (!st.track) return; st.torch = !st.torch; try { await st.track.applyConstraints({ advanced: [{ torch: st.torch }] }); } catch (e) {} });
 
-  function kareAl() {
+  function kareAl(maks) {
     const v = $("video"); const c = document.createElement("canvas");
-    const s = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
+    const s = Math.min(1, (maks || 1600) / Math.max(v.videoWidth, v.videoHeight));
     c.width = Math.round(v.videoWidth * s); c.height = Math.round(v.videoHeight * s);
     c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
     return c;
@@ -263,7 +264,7 @@
   // ---------- kapak / sırt okuma (Gemini) ----------
   const PROMPT_FOTO = `Bu fotoğrafta kitap(lar) var: raf sırtları, kapaklar veya arka kapak barkodları olabilir. Görünen HER kitap için bir nesne üret, hiçbirini atlama.
 Alanlar: "baslik", "yazar", "yayinevi", "baski" (kaçıncı baskı, sayı; görünmüyorsa null), "yil" (sayı; görünmüyorsa null), "isbn" (barkodun yanında yazan 13 ya da 10 haneli numara, boşluksuz; görünmüyorsa null), "kaynak" ("kapak", "sirt" veya "barkod"), "guven" (0-1).
-Kurallar: Okuyamadığın alanı null bırak, asla uydurma. Sırtlarda yazar genelde üstte/altta küçük yazar, en altta yayınevi logosu olur. Türkçe karakterleri koru. Kitap olmayan nesneleri atla.
+Kurallar: Okuyamadığın alanı null bırak, asla uydurma. Kare kenarında yarım kalmış ya da adı güvenle okunamayan kitabı tamamen atla (bir sonraki karede tam görünecek). Sırtlarda yazar genelde üstte/altta küçük yazar, en altta yayınevi logosu olur. Türkçe karakterleri koru. Kitap olmayan nesneleri atla.
 Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","baski":null,"yil":null,"isbn":null,"kaynak":"sirt","guven":0.9}]`;
   // Model sırası: seçili model çalışmazsa (hesaba kapalı / kaldırılmış) sıradaki denenir ve kalıcı seçilir.
   const MODELLER = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"];
@@ -310,37 +311,96 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
     try { return JSON.parse(m ? m[0] : text); } catch (e) { return []; }
   }
   const aramaKapali = (e) => /google_search|grounding|search tool|billing|free tier|not enabled|not supported/i.test((e && e.message) || "");
-  async function gorselOku(blob) {
+  // aynı kitap (ad+yazar) zaten listede mi? — sürekli okumada üst üste binen kareler için
+  // karşılaştırma için Türkçe harf farklarını eşitle (İ/I/ı → i, ş → s …): okuma hataları ve ASCII veritabanı adları için
+  const kat = (s) => norm(String(s ?? "").replace(/İ/g, "i").replace(/I/g, "ı")).replace(/[ıi]/g, "i").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ö/g, "o").replace(/ç/g, "c");
+  const sonSayi = (s) => { const m = s.match(/(\d+)\s*$/); return m ? m[1] : ""; };
+  function benzerVar(baslik, yazar) {
+    const b = kat(baslik); if (b.length < 3) return false;
+    const y = kat(yazar).split(" ").pop() || "";
+    const tok = (s) => new Set(kat(s).split(" ").filter((t) => t.length > 2));
+    const tb = tok(baslik), bn = sonSayi(b);
+    const esit = (k) => {
+      const kb = kat(k.baslik); if (!kb) return false;
+      if (kb === b) return true;
+      const kn = sonSayi(kb); if (bn && kn && bn !== kn) return false; // "İnce Memed 1" ≠ "İnce Memed 2"
+      const yazarUyar = !y || !k.yazar || kat(k.yazar).includes(y);
+      if ((kb.startsWith(b) || b.startsWith(kb)) && Math.min(kb.length, b.length) >= 8) return yazarUyar;
+      const kt = tok(k.baslik); let ortak = 0; for (const t of tb) if (kt.has(t)) ortak++;
+      const j = ortak / (tb.size + kt.size - ortak || 1);
+      return j >= 0.7 && yazarUyar;
+    };
+    return st.bulunan.some(esit) || st.kitaplar.some((k) => k.satis !== "satildi" && esit(k));
+  }
+  async function gorselOku(blob, sessiz) {
     st.okuyor = true;
     try {
-      durum("Görüntü okunuyor…"); toast("Okunuyor…");
+      if (!sessiz) durum("Görüntü okunuyor…"); toast("Okunuyor…");
       const b64 = await blobB64(blob);
       let liste = await gemini([{ text: PROMPT_FOTO }, { inline_data: { mime_type: "image/jpeg", data: b64 } }]);
       if (!Array.isArray(liste)) liste = liste && Array.isArray(liste.kitaplar) ? liste.kitaplar : [];
       liste = liste.filter((k) => k && (k.baslik || k.isbn));
-      if (!liste.length) { durum("Bu karede kitap okunamadı. Daha yakından ve düz tut.", true); toast("Kitap bulunamadı"); return; }
-      let n = 0;
+      if (!liste.length) { if (!sessiz) durum("Bu karede kitap okunamadı. Daha yakından ve düz tut.", true); toast(sessiz ? "Bu karede kitap yok; kaydırmaya devam" : "Kitap bulunamadı"); return 0; }
+      let n = 0, ayni = 0;
       for (const k of liste) {
         const isbn = isbnDuzelt(k.isbn || "");
-        if (isbn && listedeVar(isbn)) continue;
+        if (isbn && listedeVar(isbn)) { ayni++; continue; }
+        if (!isbn && benzerVar(k.baslik || "", k.yazar || "")) { ayni++; continue; }
         const kayit = yeniKayit({ baslik: k.baslik || "", yazar: k.yazar || "", yayinevi: k.yayinevi || "", baski: k.baski ?? "", yil: k.yil ?? "", isbn }, k.kaynak || "kapak", num(k.guven) ?? 0.6);
         if (isbn) { const b = await isbnBilgi(isbn); if (b && b.baslik) Object.assign(kayit, { baslik: b.baslik, yazar: b.yazar || kayit.yazar, yayinevi: b.yayinevi || kayit.yayinevi, yil: b.yil || kayit.yil, kapak: b.kapak, bilgi: true }); }
         else if (kayit.baslik && !kayit.kapak) { try { const l = await googleBooks("intitle:" + kayit.baslik + (kayit.yazar ? " inauthor:" + kayit.yazar : "")); if (l.length && norm(l[0].baslik).startsWith(norm(kayit.baslik).slice(0, 12))) { kayit.kapak = l[0].kapak; if (!kayit.isbn) kayit.isbn = l[0].isbn; if (!kayit.yayinevi) kayit.yayinevi = l[0].yayinevi; } } catch (e) {} }
         st.bulunan.unshift(kayit); n++;
         if (kayit.baslik) piyasaFiyat(kayit);
       }
-      bulunanGoster(); flash(); bip();
-      durum(n + " kitap okundu. Kontrol et, fiyatı denetle, kaydet."); toast(n + " kitap eklendi");
+      bulunanGoster(); if (n) { flash(); bip(); }
+      st.otoSayac = (st.otoSayac || 0) + n;
+      if (sessiz) toast(n ? n + " kitap eklendi (toplam " + st.otoSayac + "); kaydırmaya devam" : "Hepsi zaten listede; kaydırmaya devam");
+      else { durum(n + " kitap okundu" + (ayni ? ", " + ayni + " tanesi zaten listedeydi" : "") + ". Kontrol et, fiyatı denetle, kaydet."); toast(n + " kitap eklendi"); }
+      return n;
     } catch (e) {
       const k = e && e.code;
-      if (k === "anahtar_yok") { durum("Kapak/sırt okuma için Ayarlar'dan Gemini anahtarı gir. Barkod okuma anahtarsız çalışır.", true); toast("Anahtar yok: Ayarlar"); }
+      if (k === "anahtar_yok") { durum("Kapak/sırt okuma için Ayarlar'dan Gemini anahtarı gir. Barkod okuma anahtarsız çalışır.", true); toast("Anahtar yok: Ayarlar"); surekliAyarla(false); }
       else if (k === "http_429") durum("Ücretsiz kota doldu; birkaç dakika sonra tekrar dene.", true);
       else if (k === "http_400" || k === "http_403") durum("Anahtar geçersiz ya da yetkisiz: " + (e.message || ""), true);
       else durum("Okuma başarısız: " + (e.message || k || "bağlantı"), true);
-      toast("Okunamadı; tekrar dene");
+      toast(sessiz ? "Okunamadı; birkaç saniye sonra yine denenecek" : "Okunamadı; tekrar dene");
+      return -1;
     } finally { st.okuyor = false; }
   }
   $("kapakOku").addEventListener("click", async () => { if (!st.stream) return; const c = kareAl(); flash(); await gorselOku(await kanvasBlob(c)); });
+
+  // ---------- sürekli okuma: telefon sabitlenince ve yeni raf parçası görünce kare kendiliğinden gönderilir ----------
+  const oto = { acik: false, dongu: 0, sonOrnek: null, sonGonder: null, sabit: 0, sonZaman: 0 };
+  function ornekAl() {
+    const v = $("video"); const c = ornekAl.c || (ornekAl.c = document.createElement("canvas")); c.width = 32; c.height = 24;
+    const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(v, 0, 0, 32, 24);
+    const d = x.getImageData(0, 0, 32, 24).data; const g = new Uint8Array(768);
+    for (let i = 0; i < 768; i++) g[i] = (d[i * 4] * 3 + d[i * 4 + 1] * 6 + d[i * 4 + 2]) / 10;
+    return g;
+  }
+  function fark(a, b) { if (!a || !b) return 255; let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; }
+  function surekliAyarla(ac) {
+    oto.acik = !!ac; const b = $("surekli"); b.textContent = oto.acik ? "🎥 Sürekli oku: AÇIK" : "🎥 Sürekli oku: KAPALI"; b.classList.toggle("primary", !oto.acik); b.classList.toggle("danger", oto.acik);
+    if (oto.acik) { oto.sonGonder = null; oto.sabit = 0; oto.sonZaman = 0; st.otoSayac = 0; toast("Kamerayı rafta yavaşça kaydır, kısa dur…"); durum("Sürekli okuma açık: her yeni raf parçası kendiliğinden okunur."); surekliDongu(); }
+    else { oto.dongu++; if (st.stream) toast("Sürekli okuma kapalı"); }
+  }
+  async function surekliDongu() {
+    const my = ++oto.dongu; const v = $("video");
+    while (oto.acik && oto.dongu === my && st.stream) {
+      await new Promise((r) => setTimeout(r, 150));
+      if (v.readyState < 2 || document.hidden) continue;
+      let g; try { g = ornekAl(); } catch (e) { continue; }
+      const hareket = fark(g, oto.sonOrnek); oto.sonOrnek = g;
+      oto.sabit = hareket < 6 ? oto.sabit + 1 : 0;
+      if (st.okuyor) continue;
+      const yeni = fark(g, oto.sonGonder), gecen = Date.now() - oto.sonZaman;
+      if (oto.sabit >= 3 && yeni > 12 && gecen > 3500) {
+        oto.sonGonder = g; oto.sonZaman = Date.now();
+        try { const n = await gorselOku(await kanvasBlob(kareAl(1280)), true); if (n < 0) oto.sonZaman = Date.now() + 2500; } catch (e) {}
+      } else if (oto.sabit === 3 && yeni <= 12) toast("Bu kısım okundu; rafta ilerle");
+    }
+  }
+  $("surekli").addEventListener("click", () => { if (!st.stream) return; if (!st.ai.key) { durum("Sürekli okuma için Ayarlar'dan Gemini anahtarı gir.", true); return; } surekliAyarla(!oto.acik); });
 
   // fotoğraftan: barkod + (anahtar varsa) görsel okuma
   $("dosya").addEventListener("change", async (e) => {
