@@ -1,10 +1,19 @@
 {
   "name": "OkurPazarı Raf Tarama",
   "short_name": "OkurPazarı",
+  "description": "Kitapçılar için raf tarama: barkod, kapak ve sırt okuma, otomatik fiyat.",
+  "id": "./",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#FBFAF6",
   "theme_color": "#0F6E63",
   "lang": "tr",
-  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
 }

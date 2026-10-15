@@ -303,7 +303,7 @@
   // ---------- kapak / sırt okuma (Gemini) ----------
   const PROMPT_FOTO = `Bu fotoğrafta kitap(lar) var: raf sırtları, kapaklar veya arka kapak barkodları olabilir. Görünen HER kitap için bir nesne üret, hiçbirini atlama.
 Alanlar: "baslik", "yazar", "yayinevi", "baski" (kaçıncı baskı, sayı; görünmüyorsa null), "yil" (sayı; görünmüyorsa null), "isbn" (barkodun yanında yazan 13 ya da 10 haneli numara, boşluksuz; görünmüyorsa null), "kaynak" ("kapak", "sirt" veya "barkod"), "guven" (0-1).
-Kurallar: Okuyamadığın alanı null bırak, asla uydurma. Kare kenarında yarım kalmış ya da adı güvenle okunamayan kitabı tamamen atla (bir sonraki karede tam görünecek). Sırtlarda yazar genelde üstte/altta küçük yazar, en altta yayınevi logosu olur. Türkçe karakterleri koru. Sırtta BÜYÜK HARF yazsa bile ad ve yazarı normal yazımla ver ("İki Kişilik Alan", "Antonino Ferro"). Yayınevini logodan/kısaltmadan tanıyorsan tam adını yaz (YKY → Yapı Kredi Yayınları). Kitap olmayan nesneleri atla.
+Kurallar: Okuyamadığın alanı null bırak, asla uydurma. Kare kenarında yarım kalmış ya da adı güvenle okunamayan kitabı tamamen atla (bir sonraki karede tam görünecek). Sırtlarda yazar genelde üstte/altta küçük yazar, en altta yayınevi logosu olur. Türkçe karakterleri koru. Sırtta BÜYÜK HARF yazsa bile ad ve yazarı normal yazımla ver ("İki Kişilik Alan", "Antonino Ferro"). Yayınevini logodan/kısaltmadan tanıyorsan tam adını yaz (YKY → Yapı Kredi Yayınları). Aynı kitaptan iki nüsha yan yana duruyorsa ikisini de ayrı ayrı yaz (adet sayımı için). Yayınevi aynı kitabın farklı baskılarını ayırt etmeye yarar; sırtta görünüyorsa mutlaka yaz. Kitap olmayan nesneleri atla.
 Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","baski":null,"yil":null,"isbn":null,"kaynak":"sirt","guven":0.9}]`;
   // Model sırası: seçili model çalışmazsa (hesaba kapalı / kaldırılmış / günlük hakkı bitmiş) sıradaki denenir.
   // Bedava pakette günlük haklar çok farklı: Flash-Lite ~500/gün, 3.8 Flash ~20/gün → varsayılan Flash-Lite.
@@ -376,8 +376,8 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   // karşılaştırma için Türkçe harf farklarını eşitle (İ/I/ı → i, ş → s …): okuma hataları ve ASCII veritabanı adları için
   const kat = (s) => norm(String(s ?? "").replace(/İ/g, "i").replace(/I/g, "ı")).replace(/[ıi]/g, "i").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ö/g, "o").replace(/ç/g, "c");
   const sonSayi = (s) => { const m = s.match(/(\d+)\s*$/); return m ? m[1] : ""; };
-  function benzerVar(baslik, yazar) {
-    const b = kat(baslik); if (b.length < 3) return false;
+  function benzerBul(baslik, yazar, yayinevi) {
+    const b = kat(baslik); if (b.length < 3) return null;
     const y = kat(yazar).split(" ").pop() || "";
     const tok = (s) => new Set(kat(s).split(" ").filter((t) => t.length > 2));
     const tb = tok(baslik), bn = sonSayi(b);
@@ -396,8 +396,12 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
       const j = ortak / (tb.size + kt.size - ortak || 1);
       return j >= 0.7 && yazarUyar;
     };
-    return st.bulunan.some(esit) || st.kitaplar.some((k) => k.satis !== "satildi" && esit(k));
+    const adaylar = [...st.bulunan.filter(esit), ...st.kitaplar.filter((k) => k.satis !== "satildi" && esit(k))];
+    if (!adaylar.length) return null;
+    return adaylar.find((k) => !yayineviFarkli(k.yayinevi, yayinevi)) || adaylar[0]; // aynı yayınevi olanı yeğle; yoksa ilk eşleşme (farklı baskı)
   }
+  const benzerVar = (b, y) => !!benzerBul(b, y);
+  const yayineviFarkli = (a, b) => { a = kat(a); b = kat(b); return !!a && !!b && a !== b && !a.includes(b) && !b.includes(a); };
   async function gorselOku(blob, sessiz) {
     st.okuyor = (st.okuyor || 0) + 1;
     try {
@@ -409,12 +413,19 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
       if (!Array.isArray(liste)) liste = liste && Array.isArray(liste.kitaplar) ? liste.kitaplar : [];
       liste = liste.filter((k) => k && (k.baslik || k.isbn));
       if (!liste.length) { if (!sessiz) durum("Bu karede kitap okunamadı. Daha yakından ve düz tut.", true); toast(sessiz ? "Bu karede kitap yok; kaydırmaya devam" : "Kitap bulunamadı"); return 0; }
-      let n = 0, ayni = 0;
+      let n = 0, ayni = 0; const goruldu = new Map(); // bu cevapta aynı ad kaç kez geçti (yan yana iki nüsha)
       for (const k of liste) {
         const isbn = isbnDuzelt(k.isbn || "");
         if (isbn && listedeVar(isbn)) { ayni++; continue; }
-        if (!isbn && benzerVar(k.baslik || "", k.yazar || "")) { ayni++; continue; }
+        const anahtar = kat(k.baslik || "").split(":")[0].trim(); const kez = (goruldu.get(anahtar) || 0) + 1; goruldu.set(anahtar, kez);
+        const mevcut = !isbn && k.baslik ? benzerBul(k.baslik, k.yazar || "", k.yayinevi || "") : null;
+        if (mevcut && !yayineviFarkli(mevcut.yayinevi, k.yayinevi)) {
+          if (kez > 1 && st.bulunan.includes(mevcut)) { mevcut.adet = Math.max(num(mevcut.adet) || 1, kez); mevcut.cokNusha = true; } // aynı karede ikinci nüsha: adet artar
+          else ayni++;
+          continue;
+        }
         const kayit = yeniKayit({ baslik: yaziDuzelt(k.baslik || ""), yazar: yaziDuzelt(k.yazar || ""), yayinevi: yaziDuzelt(k.yayinevi || ""), baski: k.baski ?? "", yil: k.yil ?? "", isbn }, k.kaynak || "kapak", num(k.guven) ?? 0.6, false);
+        if (mevcut) kayit.farkliBaski = true; // aynı ad, farklı yayınevi: ayrı ürün
         st.bulunan.unshift(kayit); n++;
         // veritabanı ve fiyat: sırayla, arka planda (liste hemen görünür, alanlar bulundukça dolar)
         siraya(async () => {
@@ -566,7 +577,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
         <div class="book">
           ${k.kapak ? `<img src="${esc(k.kapak)}" alt="">` : `<div style="width:56px;height:80px;border-radius:4px;background:var(--surface)"></div>`}
           <div style="min-width:0"><div class="title">${esc(k.baslik || (k.bekliyor ? "Aranıyor…" : "Adı okunamadı"))}</div><div class="meta">${esc(k.yazar || "")}${k.yayinevi ? " · " + esc(k.yayinevi) : ""}${k.yil ? " · " + esc(k.yil) : ""}${k.isbn ? " · ISBN " + esc(k.isbn) : ""}</div>
-          <div class="row" style="margin-top:4px"><span class="chip">${esc(k.kaynak)}</span><span class="chip ${g}">${k.bekliyor ? "bilgi aranıyor" : k.bilgi ? "veritabanından" : "okuma %" + Math.round((k.guven || 0) * 100)}</span>${k.tekrar ? '<span class="chip warn">zaten listede olabilir</span>' : ""}</div></div>
+          <div class="row" style="margin-top:4px"><span class="chip">${esc(k.kaynak)}</span><span class="chip ${g}">${k.bekliyor ? "bilgi aranıyor" : k.bilgi ? "veritabanından" : "okuma %" + Math.round((k.guven || 0) * 100)}</span>${k.tekrar ? '<span class="chip warn">zaten listede olabilir</span>' : ""}${k.farkliBaski ? '<span class="chip">farklı baskı</span>' : ""}${(num(k.adet) || 1) > 1 ? '<span class="chip ok">' + esc(k.adet) + ' adet</span>' : ""}</div></div>
           <button class="btn danger" type="button" data-sil="${i}">Çıkar</button>
         </div>
         <div class="fields">
@@ -729,4 +740,11 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
 
   kitaplarGoster(); bulunanGoster();
   window.addEventListener("pagehide", kameraKapat);
+
+  // uygulama olarak yükleme (ana ekrana ekle): service worker + yükleme düğmesi
+  if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js").catch(() => {}); } catch (e) {} }
+  let yukleOlay = null;
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); yukleOlay = e; const b = $("yukle"); if (b) b.hidden = false; });
+  const yb = $("yukle"); if (yb) yb.addEventListener("click", async () => { if (!yukleOlay) return; yukleOlay.prompt(); try { await yukleOlay.userChoice; } catch (e) {} yukleOlay = null; yb.hidden = true; });
+  window.addEventListener("appinstalled", () => { const b = $("yukle"); if (b) b.hidden = true; });
 })();

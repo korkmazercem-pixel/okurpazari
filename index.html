@@ -159,6 +159,11 @@
       <div class="row"><button class="btn primary" id="fKaydet" type="button">Kaydet</button><span class="status" id="fDurum"></span></div>
     </div>
     <div class="band">
+      <h3>Telefona / bilgisayara yükle</h3>
+      <p class="hint">Siteyi uygulama gibi simgeyle açmak için: <b>Telefon</b> — tarayıcı menüsü (⋮ veya ≡) → <b>Ana ekrana ekle</b> / <b>Yükle</b>. <b>Bilgisayar</b> — Edge/Chrome adres çubuğunun sağındaki <b>yükle</b> simgesi ya da menü → Uygulamalar → <b>Bu siteyi uygulama olarak yükle</b>. Yüklü uygulama her açılışta güncel sürümü alır; yeniden yüklemek gerekmez.</p>
+      <button class="btn primary" id="yukle" type="button" hidden>📲 Uygulama olarak yükle</button>
+    </div>
+    <div class="band">
       <h3>Platform</h3>
       <dl class="kv"><dt>Satış komisyonu</dt><dd id="pKom">%0</dd><dt>Aylık abonelik</dt><dd id="pAbo">0 ₺</dd><dt>Sürüm</dt><dd>0.2 — raf tarama + otomatik fiyat (yerel kayıt)</dd></dl>
       <p class="hint">Kayıtlar şimdilik bu telefonda tutulur; hesap ve ortak veritabanı sonraki sürümde.</p>
@@ -167,6 +172,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
