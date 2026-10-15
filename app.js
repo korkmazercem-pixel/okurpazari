@@ -268,23 +268,34 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
   // Model sırası: seçili model çalışmazsa (hesaba kapalı / kaldırılmış) sıradaki denenir ve kalıcı seçilir.
   const MODELLER = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"];
   const modelHatasi = (e) => (e.code === "http_404" || e.code === "http_400" || e.code === "http_403") && /no longer available|not found|not supported|does not exist|deprecated|is not available/i.test(e.message || "") && !/grounding|google_search|search/i.test(e.message || "");
+  const geciciHata = (e) => e.code === "http_503" || e.code === "http_429" || /high demand|overloaded|try again later|resource.?exhausted|unavailable/i.test(e.message || "");
   async function geminiIstek(body) {
     const key = (st.ai.key || "").trim();
     if (!key) throw { code: "anahtar_yok" };
     const sira = [st.ai.model, ...MODELLER].filter((m, i, a) => m && a.indexOf(m) === i);
     let son = null;
-    for (const model of sira) {
-      const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key);
-      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (r.ok) {
-        if (model !== st.ai.model) { st.ai.model = model; LS.set("op_ai", st.ai); const s = $("aiModel"); if (s) s.value = model; }
-        const j = await r.json();
-        return (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+    for (let tur = 0; tur < 2; tur++) {
+      let kalici = true; // yalnızca "model kapalı" hatalarından sonra bulunan model kalıcı seçilir; yoğunluk geçicidir
+      for (const model of sira) {
+        const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key);
+        let r;
+        try { r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+        catch (e) { son = { code: "baglanti", message: "İnternet bağlantısı yok ya da kesildi" }; kalici = false; continue; }
+        if (r.ok) {
+          if (kalici && model !== st.ai.model) { st.ai.model = model; LS.set("op_ai", st.ai); const s = $("aiModel"); if (s) s.value = model; }
+          const j = await r.json();
+          return (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+        }
+        let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {}
+        son = { code: "http_" + r.status, message: m };
+        if (modelHatasi(son)) continue;
+        if (geciciHata(son)) { kalici = false; continue; }
+        throw son;
       }
-      let m = ""; try { m = (await r.json()).error?.message || ""; } catch (e) {}
-      son = { code: "http_" + r.status, message: m };
-      if (!modelHatasi(son)) throw son;
+      if (!son || !(geciciHata(son) || son.code === "baglanti")) break;
+      await new Promise((res) => setTimeout(res, 2000)); // yoğunluk: 2 sn sonra bir tur daha
     }
+    if (son && geciciHata(son)) son.message = "Google'ın modeli şu an yoğun; birkaç saniye sonra tekrar bas.";
     throw son || { code: "model_yok", message: "Çalışan model bulunamadı" };
   }
   async function gemini(parts) {
@@ -326,6 +337,7 @@ Yalnızca JSON dizi döndür: [{"baslik":"...","yazar":"...","yayinevi":"...","b
       else if (k === "http_429") durum("Ücretsiz kota doldu; birkaç dakika sonra tekrar dene.", true);
       else if (k === "http_400" || k === "http_403") durum("Anahtar geçersiz ya da yetkisiz: " + (e.message || ""), true);
       else durum("Okuma başarısız: " + (e.message || k || "bağlantı"), true);
+      toast("Okunamadı; tekrar dene");
     } finally { st.okuyor = false; }
   }
   $("kapakOku").addEventListener("click", async () => { if (!st.stream) return; const c = kareAl(); flash(); await gorselOku(await kanvasBlob(c)); });
